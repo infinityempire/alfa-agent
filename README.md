@@ -1,6 +1,10 @@
-# Reddit Distributor Agent
+# Alpha - Reddit Marketing Agent ⭐
 
-A Multi-Agent marketing and distribution system for Reddit, designed to run in a Linux/Termux environment.
+![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
+![GitHub](https://img.shields.io/badge/GitHub-infinityempire/alfa--agent-lightgrey.svg)
+
+**Alpha** is a multi-agent marketing and distribution system for Reddit, designed to run in a Linux/Termux environment.
 
 ## Overview
 
@@ -13,30 +17,28 @@ This system consists of three distinct components that work together in a pipeli
 ## Project Structure
 
 ```
-reddit_distributor_agent/
+alfa-agent/
 ├── agents/
 │   ├── __init__.py
-│   ├── reddit_scraper.py      # PRAW-based subreddit scraper
-│   ├── gemini_writer.py       # Gemini API comment generator
-│   └── publishing_engine.py   # Humanized comment publisher
+│   ├── alpha.py                # Main Alpha agent orchestrator
+│   ├── reddit_scraper.py       # PRAW-based subreddit scraper
+│   ├── gemini_writer.py        # Gemini API comment generator
+│   └── publishing_engine.py    # Humanized comment publisher
 ├── config/
 │   ├── __init__.py
-│   └── settings.py            # All configuration settings
+│   └── settings.py             # All configuration settings
 ├── utils/
 │   ├── __init__.py
-│   ├── logger.py              # Colored logging utilities
-│   ├── state.py               # State persistence manager
-│   └── delay.py               # Random delay utilities
+│   ├── logger.py               # Colored logging utilities
+│   ├── state.py                # State persistence manager
+│   └── delay.py                # Random delay utilities
 ├── data/
-│   ├── delta_reporting_data.json  # Your business metrics
-│   ├── processed_posts.json       # Track processed posts
-│   ├── state.json                  # Agent state
-│   └── generated_comments.json     # Saved comments
-├── logs/
-│   └── reddit_agent.log       # Application logs
-├── main.py                    # Central controller
-├── requirements.txt           # Python dependencies
-├── .env.example              # Environment template
+│   └── delta_reporting_data.json.example  # Your business metrics template
+├── logs/                        # Application logs
+├── alpha.py                     # Alpha entry point
+├── main.py                      # Central controller
+├── requirements.txt             # Python dependencies
+├── .env.example                 # Environment template
 └── README.md
 ```
 
