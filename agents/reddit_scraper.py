@@ -17,13 +17,24 @@ class RedditScraperAgent:
     Agent responsible for scraping posts from Reddit subreddits.
     """
     
-    def __init__(self):
+    def __init__(self, mock_mode: bool = False):
         """Initialize the Reddit scraper agent."""
         self.reddit = None
+        self.mock_mode = mock_mode
         self._initialize_reddit()
     
     def _initialize_reddit(self) -> None:
         """Initialize the Reddit API connection."""
+        if self.mock_mode:
+            logger.info("Reddit Scraper running in MOCK mode (no API calls)")
+            return
+            
+        # Check if credentials are configured
+        if not REDDIT_CONFIG["client_id"] or REDDIT_CONFIG["client_id"].startswith("your_"):
+            logger.warning("Reddit credentials not configured. Running in MOCK mode.")
+            self.mock_mode = True
+            return
+            
         try:
             self.reddit = praw.Reddit(
                 client_id=REDDIT_CONFIG["client_id"],
@@ -36,8 +47,8 @@ class RedditScraperAgent:
             self.reddit.user.me()
             logger.info("Successfully connected to Reddit API")
         except Exception as e:
-            logger.error(f"Failed to initialize Reddit connection: {e}")
-            raise
+            logger.warning(f"Reddit API connection failed: {e}. Running in MOCK mode.")
+            self.mock_mode = True
     
     def _is_post_relevant(self, submission: Submission) -> bool:
         """
@@ -117,6 +128,12 @@ class RedditScraperAgent:
         if sort_type is None:
             sort_type = SCRAPING_CONFIG["sort_type"]
         
+        # Mock mode - return sample data
+        if self.mock_mode:
+            logger.info("Generating MOCK posts for testing...")
+            mock_posts = self._generate_mock_posts(subreddits, limit)
+            return mock_posts
+        
         all_posts = []
         
         for subreddit_name in subreddits:
@@ -162,6 +179,43 @@ class RedditScraperAgent:
         
         logger.info(f"Total relevant posts fetched: {len(all_posts)}")
         return all_posts
+    
+    def _generate_mock_posts(self, subreddits: List[str], limit: int) -> List[Dict[str, Any]]:
+        """Generate mock posts for testing when API is not available."""
+        mock_titles = [
+            "How I grew my SaaS to $10K MRR in 6 months",
+            "Looking for feedback on our startup idea",
+            "Best tools for remote team collaboration?",
+            "What marketing strategies worked for your small business?",
+            "Launched our product today - here's what we learned",
+            "How do you handle customer acquisition costs?",
+            "Tips for first-time entrepreneur",
+            "Is this a good time to start a startup?",
+        ]
+        
+        mock_posts = []
+        for i, subreddit in enumerate(subreddits[:2]):  # Use first 2 subreddits
+            for j in range(min(limit, 3)):  # 3 posts per subreddit
+                post_id = f"mock_{subreddit}_{i}_{j}"
+                mock_posts.append({
+                    "id": post_id,
+                    "title": mock_titles[(i * 3 + j) % len(mock_titles)],
+                    "selftext": f"This is mock content for testing purposes. Post from r/{subreddit}.",
+                    "url": f"https://reddit.com/r/{subreddit}/comments/{post_id}",
+                    "subreddit": subreddit,
+                    "score": 50 + (i * 10) + j,
+                    "upvote_ratio": 0.85,
+                    "num_comments": 10 + j * 5,
+                    "created_utc": datetime.now().timestamp() - (i * 3600),
+                    "created_datetime": datetime.now().isoformat(),
+                    "author": "MockUser",
+                    "permalink": f"https://reddit.com/r/{subreddit}/comments/{post_id}",
+                    "flair": "Discussion",
+                })
+                logger.info(f"Created mock post: {mock_posts[-1]['title'][:40]}...")
+        
+        logger.info(f"Generated {len(mock_posts)} mock posts")
+        return mock_posts
     
     def get_post_details(self, post_id: str) -> Optional[Dict[str, Any]]:
         """

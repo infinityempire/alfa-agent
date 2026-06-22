@@ -64,9 +64,9 @@ class Alpha:
         logger.info(f"Initializing {self}...")
         
         try:
-            self.reddit_scraper = RedditScraperAgent()
-            self.gemini_writer = GeminiWriterAgent()
-            self.publishing_engine = PublishingEngine()
+            self.reddit_scraper = RedditScraperAgent(mock_mode=self.dry_run)
+            self.gemini_writer = GeminiWriterAgent(mock_mode=self.dry_run)
+            self.publishing_engine = PublishingEngine(mock_mode=self.dry_run)
             
             self._initialized = True
             logger.info(f"{self} ready for operation")
@@ -104,13 +104,16 @@ class Alpha:
         logger.info("💭 ALPHA THINKING...")
         
         comments_map = {}
-        for post in posts[:5]:
-            try:
-                comments = self.reddit_scraper.get_post_comments(post["id"], limit=5)
-                if comments:
-                    comments_map[post["id"]] = comments
-            except Exception as e:
-                logger.warning(f"Could not fetch comments: {e}")
+        
+        # Only fetch comments if not in mock mode
+        if not self.reddit_scraper.mock_mode:
+            for post in posts[:5]:
+                try:
+                    comments = self.reddit_scraper.get_post_comments(post["id"], limit=5)
+                    if comments:
+                        comments_map[post["id"]] = comments
+                except Exception as e:
+                    logger.warning(f"Could not fetch comments: {e}")
         
         results = await self.gemini_writer.generate_comments_batch(posts, comments_map)
         self.gemini_writer.save_generated_comments(results)

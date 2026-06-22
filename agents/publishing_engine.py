@@ -20,14 +20,25 @@ class PublishingEngine:
     Engine responsible for publishing comments with human-like delays.
     """
     
-    def __init__(self):
+    def __init__(self, mock_mode: bool = False):
         """Initialize the publishing engine."""
         self.reddit = None
+        self.mock_mode = mock_mode
         self._initialize_reddit()
         self._pending_comments: List[Dict[str, Any]] = []
     
     def _initialize_reddit(self) -> None:
         """Initialize the Reddit API connection."""
+        if self.mock_mode:
+            logger.info("Publishing engine running in MOCK mode")
+            return
+            
+        # Check if credentials are configured
+        if not REDDIT_CONFIG["client_id"] or REDDIT_CONFIG["client_id"].startswith("your_"):
+            logger.warning("Reddit credentials not configured. Publishing in MOCK mode.")
+            self.mock_mode = True
+            return
+            
         try:
             self.reddit = praw.Reddit(
                 client_id=REDDIT_CONFIG["client_id"],
@@ -38,8 +49,8 @@ class PublishingEngine:
             )
             logger.info("Publishing engine initialized")
         except Exception as e:
-            logger.error(f"Failed to initialize Reddit connection: {e}")
-            raise
+            logger.warning(f"Failed to initialize Reddit connection: {e}. Running in MOCK mode.")
+            self.mock_mode = True
     
     def _calculate_delay(self) -> int:
         """

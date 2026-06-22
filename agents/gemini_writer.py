@@ -7,9 +7,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from google import genai
-from google.genai import types
-
 from config.settings import GEMINI_CONFIG, WRITING_CONFIG, DELTA_DATA_PATH
 from utils.logger import logger
 
@@ -19,21 +16,29 @@ class GeminiWriterAgent:
     Agent responsible for generating human-like Reddit comments using Gemini.
     """
     
-    def __init__(self):
+    def __init__(self, mock_mode: bool = False):
         """Initialize the Gemini writer agent."""
         self.client = None
         self.model = GEMINI_CONFIG["model"]
+        self.mock_mode = mock_mode
         self._initialize_client()
         self._load_delta_data()
     
     def _initialize_client(self) -> None:
         """Initialize the Gemini API client."""
+        # Check if API key is configured
+        if not GEMINI_CONFIG["api_key"] or GEMINI_CONFIG["api_key"].startswith("your_"):
+            logger.warning("Gemini API key not configured. Running in MOCK mode.")
+            self.mock_mode = True
+            return
+            
         try:
+            from google import genai
             self.client = genai.Client(api_key=GEMINI_CONFIG["api_key"])
             logger.info(f"Gemini client initialized with model: {self.model}")
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini client: {e}")
-            raise
+            logger.warning(f"Failed to initialize Gemini client: {e}. Running in MOCK mode.")
+            self.mock_mode = True
     
     def _load_delta_data(self) -> None:
         """Load local Delta reporting data."""
@@ -168,7 +173,14 @@ Do not use these words: delve, revolutionary, landscape, critical, game-changer,
         Returns:
             Generated comment text or None on failure
         """
+        # Mock mode - return a pre-generated comment
+        if self.mock_mode:
+            mock_comment = self._generate_mock_comment(post)
+            logger.info(f"[MOCK] Generated comment for post: {post['title'][:40]}...")
+            return mock_comment
+            
         try:
+            from google.genai import types
             system_prompt = self._build_system_prompt()
             user_prompt = self._build_user_prompt(post, comments)
             
@@ -195,6 +207,19 @@ Do not use these words: delve, revolutionary, landscape, critical, game-changer,
         except Exception as e:
             logger.error(f"Error generating comment: {e}")
             return None
+    
+    def _generate_mock_comment(self, post: Dict[str, Any]) -> str:
+        """Generate a mock comment for testing."""
+        mrr = self.delta_data['company_metrics'].get('mrr', '$12.5K')
+        return f"""Great question! Based on our experience growing a similar product:
+
+1. Start with a small, focused MVP - don't try to build everything at once
+2. Get real user feedback early and iterate quickly
+3. Focus on solving one problem really well before expanding
+
+We've been through this journey ourselves and happy to chat more about what worked for us. What's the biggest challenge you're facing right now?
+
+[data-powered insights from growing to {mrr}]"""
     
     async def generate_comments_batch(
         self,
