@@ -9,6 +9,7 @@ on:
 jobs:
   warmup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # Set timeout to 10 minutes
     
     steps:
       - name: Checkout repository
@@ -29,4 +30,4 @@ jobs:
           REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
           REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python warmup.py --live
+        run: python warmup.py --live --retries 2 --retry-delay 5

@@ -121,62 +121,82 @@ class BrowserPublisher:
         self.page = None
         self._playwright = None
     
-    def login(self) -> bool:
+    def login(self, max_retries: int = 2) -> bool:
         """
         Log in to Reddit using browser automation.
         
+        Args:
+            max_retries: Maximum number of login attempts
+            
         Returns:
             True if login successful, False otherwise
         """
-        if not self._initialize_browser():
-            return False
+        last_error = None
         
-        if self.mock_mode:
-            self.log(f"DRY-RUN: Would login as {self.username}")
-            self._logged_in = True
-            return True
-        
-        try:
-            self.log(f"Navigating to login page...")
-            self.page.goto(self.LOGIN_URL, timeout=30000)
-            self.page.wait_for_load_state("networkidle")
+        for attempt in range(1, max_retries + 1):
+            # Close any existing browser
+            self._close_browser()
             
-            # Wait for login form
-            self.log("Waiting for login form...")
-            self.page.wait_for_selector('input[name="username"]', timeout=15000)
+            if not self._initialize_browser():
+                last_error = "Failed to initialize browser"
+                continue
             
-            # Fill in credentials
-            self.log(f"Entering username: {self.username}")
-            self.page.fill('input[name="username"]', self.username)
-            
-            self.log("Entering password...")
-            self.page.fill('input[name="password"]', self.password)
-            
-            # Click submit button
-            self.log("Submitting login form...")
-            self.page.click('button[type="submit"]')
-            
-            # Wait for redirect after login
-            self.page.wait_for_load_state("networkidle", timeout=20000)
-            
-            # Check if login was successful (URL should change from /login)
-            current_url = self.page.url
-            if "/login" not in current_url.lower():
-                self.log("Login successful!")
+            if self.mock_mode:
+                self.log(f"DRY-RUN: Would login as {self.username}")
                 self._logged_in = True
                 return True
-            else:
-                self.log("Login may have failed - still on login page")
-                # Try to detect error message
-                error_elem = self.page.query_selector('[data-testid="error-element"]')
-                if error_elem:
-                    error_text = error_elem.inner_text()
-                    self.log(f"Login error: {error_text}", "error")
-                return False
+            
+            try:
+                self.log(f"Navigating to login page (attempt {attempt}/{max_retries})...")
+                # Use longer timeout for GitHub Actions environments
+                self.page.goto(self.LOGIN_URL, timeout=60000)
+                self.page.wait_for_load_state("domcontentloaded", timeout=30000)
                 
-        except Exception as e:
-            self.log(f"Login error: {e}", "error")
-            return False
+                # Wait for login form with longer timeout
+                self.log("Waiting for login form...")
+                self.page.wait_for_selector('input[name="username"]', timeout=30000, state="attached")
+                
+                # Fill in credentials
+                self.log(f"Entering username: {self.username}")
+                self.page.fill('input[name="username"]', self.username)
+                
+                self.log("Entering password...")
+                self.page.fill('input[name="password"]', self.password)
+                
+                # Click submit button
+                self.log("Submitting login form...")
+                self.page.click('button[type="submit"]')
+                
+                # Wait for redirect after login with longer timeout
+                self.page.wait_for_load_state("domcontentloaded", timeout=30000)
+                
+                # Give it a moment to redirect
+                import time
+                time.sleep(2)
+                
+                # Check if login was successful (URL should change from /login)
+                current_url = self.page.url
+                if "/login" not in current_url.lower():
+                    self.log("Login successful!")
+                    self._logged_in = True
+                    return True
+                else:
+                    self.log("Login may have failed - still on login page")
+                    # Try to detect error message
+                    error_elem = self.page.query_selector('[data-testid="error-element"]')
+                    if error_elem:
+                        error_text = error_elem.inner_text()
+                        self.log(f"Login error: {error_text}", "error")
+                        last_error = error_text
+                    else:
+                        last_error = "Login page still displayed after submit"
+                        
+            except Exception as e:
+                last_error = str(e)
+                self.log(f"Login error (attempt {attempt}): {e}", "error")
+        
+        self.log(f"Login failed after {max_retries} attempts. Last error: {last_error}", "error")
+        return False
     
     def _get_warmup_comment(self, post_title: str = "", subreddit: str = "") -> str:
         """
