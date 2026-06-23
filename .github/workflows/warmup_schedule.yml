@@ -1,0 +1,32 @@
+name: Warmup Scheduler
+
+on:
+  schedule:
+    # Run at 09:00 and 18:00 UTC every day
+    - cron: '0 9,18 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  warmup:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+      
+      - name: Run warmup
+        env:
+          REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
+          REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python warmup.py --live
