@@ -424,7 +424,7 @@ class BrowserPublisher:
         target_subreddits = subreddits or default_subreddits
         
         self.log("=" * 50)
-        self.log("STARTING REDDIT WARMUP (Browser Mode)")
+        self.log("STARTING ZETA REDDIT WARMUP (Browser Mode)")
         self.log(f"Mode: {'DRY-RUN' if self.mock_mode else 'LIVE'}")
         self.log(f"Target subreddits: {target_subreddits}")
         self.log(f"Comments per round: {self.comments_per_round}")
@@ -457,7 +457,7 @@ class BrowserPublisher:
             self._close_browser()
         
         self.log("=" * 50)
-        self.log("WARMUP COMPLETE")
+        self.log("ZETA WARMUP COMPLETE")
         self.log(f"Success: {results['success']}")
         self.log(f"Comments posted: {results.get('warmup_results', {}).get('comments_posted', 0)}")
         self.log("=" * 50)

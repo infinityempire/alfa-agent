@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Alfa-Agent Warmup Scheduler
+Zeta-Agent Warmup Scheduler
 ===========================
 
 Automated daily scheduler for Reddit warmup.
@@ -325,7 +325,7 @@ class WarmupScheduler:
         write_pid()
         
         logger.info("=" * 60)
-        logger.info("ALFA-AGENT WARMUP SCHEDULER STARTED")
+        logger.info("ZETA-AGENT WARMUP SCHEDULER STARTED")
         logger.info("=" * 60)
         logger.info(f"Schedule: {', '.join(self.schedule_times)}")
         logger.info(f"Max runs per day: {self.max_runs_per_day}")
@@ -417,7 +417,7 @@ def start_scheduler(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Alfa-Agent Warmup Scheduler - Automated daily warmup",
+        description="Zeta-Agent Warmup Scheduler - Automated daily warmup",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

@@ -1,17 +1,17 @@
-# Alpha - Reddit Marketing Agent
+# Zeta - Reddit Marketing Agent
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
-![GitHub](https://img.shields.io/badge/GitHub-infinityempire/alfa--agent-lightgrey.svg)
+![GitHub](https://img.shields.io/badge/GitHub-infinityempire/zeta--agent-lightgrey.svg)
 
-**Alpha** is a multi-agent marketing and distribution system for Reddit, designed to run in a Linux/Termux environment.
+**Zeta** is a multi-agent marketing and distribution system for Reddit, designed to run in a Linux/Termux environment.
 
 ## Quick Start
 
 ```bash
 # Clone the repository
-git clone https://github.com/infinityempire/alfa-agent.git
-cd alfa-agent
+git clone https://github.com/infinityempire/zeta-agent.git
+cd zeta-agent
 
 # Install dependencies
 pip install -r requirements.txt
@@ -21,10 +21,10 @@ cp .env.example .env
 # Edit .env with your Reddit and Gemini API keys
 
 # Run in dry-run mode
-python alpha.py --dry-run
+python zeta.py --dry-run
 
 # Run live (posts to Reddit)
-python alpha.py --live
+python zeta.py --live
 ```
 
 ## Overview
@@ -38,10 +38,10 @@ This system consists of three distinct components that work together in a pipeli
 ## Project Structure
 
 ```
-alfa-agent/
+zeta-agent/
 ├── agents/
 │   ├── __init__.py
-│   ├── alpha.py                # Main Alpha agent orchestrator
+│   ├── zeta.py                # Main Zeta agent orchestrator
 │   ├── reddit_scraper.py       # PRAW-based subreddit scraper
 │   ├── gemini_writer.py        # Gemini API comment generator
 │   └── publishing_engine.py    # Humanized comment publisher
@@ -56,7 +56,7 @@ alfa-agent/
 ├── data/
 │   └── delta_reporting_data.json.example  # Business metrics template
 ├── logs/                       # Application logs
-├── alpha.py                    # Alpha entry point
+├── zeta.py                    # Zeta entry point
 ├── main.py                     # Central controller
 ├── requirements.txt           # Python dependencies
 ├── .env.example                # Environment template
@@ -120,19 +120,19 @@ TARGET_SUBREDDITS = [
 ### Test Connections
 
 ```bash
-python alpha.py --status
+python zeta.py --status
 ```
 
 ### Run Full Pipeline (Dry Run)
 
 ```bash
-python alpha.py --dry-run --max-posts 3
+python zeta.py --dry-run --max-posts 3
 ```
 
 ### Run Full Pipeline (Live)
 
 ```bash
-python alpha.py --live --max-posts 5
+python zeta.py --live --max-posts 5
 ```
 
 ## Command Line Options

@@ -1,10 +1,10 @@
 #!/bin/bash
-# Alfa-Agent Warmup Scheduler Launcher
+# Zeta-Agent Warmup Scheduler Launcher
 # This script starts the warmup scheduler in the background
 
 cd "$(dirname "$0")"
 
-echo "Starting Alfa-Agent Warmup Scheduler..."
+echo "Starting Zeta-Agent Warmup Scheduler..."
 echo "Schedule: 09:00 and 18:00 daily"
 echo "Max runs per day: 2"
 echo ""

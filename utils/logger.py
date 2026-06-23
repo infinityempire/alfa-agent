@@ -9,7 +9,7 @@ from colorlog import ColoredFormatter
 from config.settings import LOG_CONFIG
 
 
-def setup_logger(name: str = "reddit_agent") -> logging.Logger:
+def setup_logger(name: str = "zeta_agent") -> logging.Logger:
     """
     Set up a logger with both file and console handlers.
     

@@ -7,8 +7,8 @@ Your current GitHub token (`GH_TOKEN`) does not have the `repo` scope required t
 ## Solution 1: Create Repository Manually (Quick)
 
 1. Go to: https://github.com/new
-2. Repository name: `alfa-agent`
-3. Description: `Alpha - Multi-Agent Reddit Marketing & Distribution System`
+2. Repository name: `zeta-agent`
+3. Description: `Zeta - Multi-Agent Reddit Marketing & Distribution System`
 4. Select: Public
 5. Click "Create repository"
 
@@ -16,7 +16,7 @@ Then push your code:
 
 ```bash
 cd /workspace/reddit_distributor_agent
-git remote add origin https://github.com/infinityempire/alfa-agent.git
+git remote add origin https://github.com/infinityempire/zeta-agent.git
 git push -u origin main
 ```
 
@@ -24,7 +24,7 @@ git push -u origin main
 
 1. Go to: https://github.com/settings/tokens
 2. Click "Generate new token (classic)"
-3. Name: `alfa-agent-token`
+3. Name: `zeta-agent-token`
 4. Scopes: Select `repo` (full control)
 5. Click "Generate token"
 6. Copy the token and update your environment
@@ -32,9 +32,9 @@ git push -u origin main
 Then run:
 ```bash
 cd /workspace/reddit_distributor_agent
-gh repo create alfa-agent --public --source=. --push
+gh repo create zeta-agent --public --source=. --push
 ```
 
 ## Verification
 
-After pushing, verify at: https://github.com/infinityempire/alfa-agent
+After pushing, verify at: https://github.com/infinityempire/zeta-agent

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Warmup Mode for Alfa-Agent - Browser-based Reddit Engagement
+Warmup Mode for Zeta-Agent - Browser-based Reddit Engagement
 ============================================================
 
 A lightweight warmup script using Playwright browser automation.
@@ -36,7 +36,7 @@ from utils.logger import logger
 def main():
     """Main entry point for warmup mode."""
     parser = argparse.ArgumentParser(
-        description="Alfa-Agent Warmup Mode - Browser-based Reddit Engagement",
+        description="Zeta-Agent Warmup Mode - Browser-based Reddit Engagement",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -104,7 +104,7 @@ Required Environment Variables (or command line args):
     
     # Display configuration
     print("\n" + "=" * 60)
-    print("Alfa-Agent Warmup Mode")
+    print("Zeta-Agent Warmup Mode")
     print("=" * 60)
     print(f"  Username:     {username}")
     print(f"  Mode:        {'🧪 DRY-RUN' if dry_run else '🚀 LIVE'}")

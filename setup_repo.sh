@@ -1,10 +1,10 @@
 #!/bin/bash
-# Setup script for alfa-agent repository
+# Setup script for zeta-agent repository
 
 set -e
 
 echo "==============================================="
-echo "  Alpha Agent - Repository Setup"
+echo "  Zeta Agent - Repository Setup"
 echo "==============================================="
 
 # Navigate to script directory
@@ -18,21 +18,21 @@ else
     echo "Creating GitHub repository..."
     
     # Try gh CLI first
-    if gh repo create alfa-agent --public --description "Alpha - Multi-Agent Reddit Marketing & Distribution System" 2>/dev/null; then
+    if gh repo create zeta-agent --public --description "Zeta - Multi-Agent Reddit Marketing & Distribution System" 2>/dev/null; then
         echo "Repository created with gh CLI"
-        git remote add origin https://github.com/infinityempire/alfa-agent.git
+        git remote add origin https://github.com/infinityempire/zeta-agent.git
     else
         echo ""
         echo "Could not create repository automatically."
         echo ""
         echo "Please create manually:"
         echo "  1. Go to: https://github.com/new"
-        echo "  2. Name: alfa-agent"
+        echo "  2. Name: zeta-agent"
         echo "  3. Select: Public"
         echo "  4. Click: Create repository"
         echo ""
         echo "Then run:"
-        echo "  git remote add origin https://github.com/infinityempire/alfa-agent.git"
+        echo "  git remote add origin https://github.com/infinityempire/zeta-agent.git"
         echo "  ./setup_repo.sh"
         exit 1
     fi
@@ -46,5 +46,5 @@ git push -u origin main
 echo ""
 echo "==============================================="
 echo "  Setup Complete!"
-echo "Repository: https://github.com/infinityempire/alfa-agent"
+echo "Repository: https://github.com/infinityempire/zeta-agent"
 echo "==============================================="
