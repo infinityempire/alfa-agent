@@ -161,33 +161,106 @@ class BrowserPublisher:
 
             try:
                 self.log(f"Navigating to login page (attempt {attempt}/{max_retries})...")
-                self.page.goto(self.LOGIN_URL, timeout=60000)
-                self.page.wait_for_load_state("domcontentloaded", timeout=30000)
-
-                self.log("Waiting for login form...")
-                self.page.wait_for_selector('input[name="username"]', timeout=30000, state="attached")
-
-                self.log(f"Entering username: {self.username}")
-                self.page.fill('input[name="username"]', self.username)
-
-                self.log("Entering password...")
-                self.page.fill('input[name="password"]', self.password)
-
-                self.log("Submitting login form...")
-                self.page.click('button[type="submit"]')
-
-                self.page.wait_for_load_state("domcontentloaded", timeout=30000)
-
+                
+                # Navigate with longer timeout and wait for network
+                self.page.goto(self.LOGIN_URL, timeout=120000, wait_until="networkidle")
+                
+                # Wait for page to settle
                 import time
-                time.sleep(3)
-
+                time.sleep(2)
+                
+                # Check for Cloudflare or challenge pages
+                if "challenge" in self.page.url.lower() or self.page.query_selector("#challenge-title"):
+                    self.log("Detected Cloudflare challenge, waiting...")
+                    time.sleep(10)
+                    self.page.wait_for_load_state("networkidle", timeout=60000)
+                    time.sleep(3)
+                
+                # Try multiple selectors for the username field
+                username_selectors = [
+                    'input[name="username"]',
+                    'input[id="loginUsername"]',
+                    '#loginUsername',
+                    'input[placeholder*="username" i]',
+                    'input[data-testid="login-username"]'
+                ]
+                
+                username_field = None
+                for selector in username_selectors:
+                    try:
+                        self.page.wait_for_selector(selector, timeout=5000, state="attached")
+                        username_field = self.page.query_selector(selector)
+                        if username_field:
+                            self.log(f"Found username field with selector: {selector}")
+                            break
+                    except:
+                        continue
+                
+                if not username_field:
+                    # Take screenshot for debugging
+                    self.page.screenshot(path="/tmp/login_debug.png")
+                    self.log(f"Page URL: {self.page.url}")
+                    self.log("Could not find username field", "error")
+                    # Try direct URL navigation to Reddit main
+                    self.page.goto("https://www.reddit.com/login/", timeout=60000)
+                    time.sleep(5)
+                    continue
+                
+                self.log(f"Entering username: {self.username}")
+                username_field.click()
+                username_field.fill(self.username)
+                time.sleep(0.5)
+                
+                # Try multiple selectors for password
+                password_selectors = [
+                    'input[name="password"]',
+                    'input[id="loginPassword"]',
+                    '#loginPassword',
+                    'input[placeholder*="password" i]'
+                ]
+                
+                for selector in password_selectors:
+                    try:
+                        password_field = self.page.query_selector(selector)
+                        if password_field:
+                            self.log(f"Found password field with selector: {selector}")
+                            password_field.click()
+                            password_field.fill(self.password)
+                            break
+                    except:
+                        continue
+                
+                time.sleep(0.5)
+                
+                # Submit
+                submit_selectors = [
+                    'button[type="submit"]',
+                    'button[data-testid="login-button"]',
+                    'button:has-text("Log In")'
+                ]
+                
+                for selector in submit_selectors:
+                    try:
+                        submit_btn = self.page.query_selector(selector)
+                        if submit_btn and submit_btn.is_enabled():
+                            self.log(f"Clicking submit with: {selector}")
+                            submit_btn.click()
+                            break
+                    except:
+                        continue
+                
+                # Wait for navigation after login
+                time.sleep(5)
+                
+                # Check current URL
                 current_url = self.page.url
-                if "/login" not in current_url.lower():
-                    self.log("Login successful!")
+                if "/login" not in current_url.lower() and "authorize" not in current_url.lower():
+                    self.log(f"Login successful! Redirected to: {current_url}")
                     self._logged_in = True
                     return True
                 else:
                     self.log("Login may have failed - still on login page")
+                    # Check for error message
                     error_elem = self.page.query_selector('[data-testid="error-element"]')
                     if error_elem:
                         error_text = error_elem.inner_text()
