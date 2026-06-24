@@ -11,6 +11,10 @@ USERNAME   = os.environ.get("REDDIT_USERNAME", "")
 PASSWORD   = os.environ.get("REDDIT_PASSWORD", "")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
 
+# Termux paths — explicit to avoid Selenium auto-detection failure
+GECKODRIVER_PATH = "/data/data/com.termux/files/usr/bin/geckodriver"
+FIREFOX_PATH     = "/data/data/com.termux/files/usr/bin/firefox"
+
 SUBREDDITS = [
     "AskReddit", "funny", "todayilearned",
     "mildlyinteresting", "worldnews", "science",
@@ -58,15 +62,17 @@ def setup_driver():
     from selenium.webdriver.firefox.service import Service
 
     opts = Options()
-    opts.add_argument("--headless")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("-headless")
+    opts.binary_location = FIREFOX_PATH
     opts.set_preference("general.useragent.override",
         "Mozilla/5.0 (Android 13; Mobile; rv:120.0) Gecko/120.0 Firefox/120.0")
     opts.set_preference("dom.webdriver.enabled", False)
     opts.set_preference("useAutomationExtension", False)
 
-    service = Service(log_path="/dev/null")
+    service = Service(
+        executable_path=GECKODRIVER_PATH,
+        log_path="/dev/null"
+    )
     driver = webdriver.Firefox(options=opts, service=service)
     driver.set_page_load_timeout(30)
     return driver
@@ -226,6 +232,8 @@ def main():
         print("❌ Set REDDIT_USERNAME and REDDIT_PASSWORD!")
         sys.exit(1)
 
+    log(f"geckodriver: {GECKODRIVER_PATH}")
+    log(f"Firefox:     {FIREFOX_PATH}")
     log("Starting Firefox (headless)...")
     try:
         driver = setup_driver()
