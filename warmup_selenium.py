@@ -204,40 +204,72 @@ def post_comment_via_browser(driver, post_url, comment_text):
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.common.keys import Keys
 
     try:
         driver.get(post_url)
-        time.sleep(3)
+        time.sleep(5)  # wait for JS to render
 
-        wait = WebDriverWait(driver, 15)
+        comment_box = None
 
-        # Find comment box
+        # Try 1: div[contenteditable='true'] (Shreddit rich text editor)
         try:
-            comment_box = wait.until(EC.presence_of_element_located(
-                (By.CSS_SELECTOR, "[data-testid='comment-submission-form-richtext'] div[contenteditable='true']")
-            ))
+            comment_box = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div[contenteditable='true']"))
+            )
+            log("   Found contenteditable div")
         except:
-            try:
-                comment_box = driver.find_element(By.CSS_SELECTOR, "div[contenteditable='true']")
-            except:
-                log("⚠️ Comment box not found")
-                return False
+            pass
 
+        # Try 2: plain textarea fallback
+        if not comment_box:
+            try:
+                comment_box = driver.find_element(By.CSS_SELECTOR, "textarea")
+                log("   Found textarea")
+            except:
+                pass
+
+        if not comment_box:
+            log("⚠️ Comment box not found")
+            return False
+
+        # Click to focus, then type
+        driver.execute_script("arguments[0].scrollIntoView(true);", comment_box)
+        time.sleep(0.5)
         comment_box.click()
         time.sleep(0.5)
         comment_box.send_keys(comment_text)
         time.sleep(1)
 
-        # Find and click submit button
-        try:
-            submit_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+        # Find submit button — try multiple selectors
+        submit_btn = None
+        for sel in [
+            "button[type='submit']",
+            "button.submit",
+            "[data-testid='comment-submit-button']",
+            "shreddit-composer button",
+        ]:
+            try:
+                submit_btn = driver.find_element(By.CSS_SELECTOR, sel)
+                if submit_btn.is_displayed():
+                    break
+                submit_btn = None
+            except:
+                pass
+
+        if submit_btn:
+            driver.execute_script("arguments[0].scrollIntoView(true);", submit_btn)
+            time.sleep(0.3)
             submit_btn.click()
-            time.sleep(3)
-            log(f"✅ Comment submitted!")
+            time.sleep(4)
+            log("✅ Comment submitted via button!")
             return True
-        except Exception as e:
-            log(f"⚠️ Submit button error: {e}")
-            return False
+        else:
+            # Fallback: Ctrl+Enter
+            comment_box.send_keys(Keys.CONTROL + Keys.RETURN)
+            time.sleep(4)
+            log("✅ Comment submitted via Ctrl+Enter!")
+            return True
 
     except Exception as e:
         log(f"⚠️ Browser comment error: {e}")
