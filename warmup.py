@@ -9,10 +9,12 @@ Required:
 - REDDIT_USERNAME
 - REDDIT_PASSWORD
 
-Optional (for proxy):
+Proxy (Webshare Residential):
 - REDDIT_PROXY_SERVER - Proxy URL (e.g., "http://proxy.example.com:8080")
 - REDDIT_PROXY_USERNAME - Proxy username
 - REDDIT_PROXY_PASSWORD - Proxy password
+
+NOTE: This script runs in LIVE mode only - all dry-run options have been disabled.
 """
 import os
 import sys
@@ -39,10 +41,6 @@ def main():
     parser.add_argument("-g", "--gemini-key",
                        default=os.environ.get("GEMINI_API_KEY"),
                        help="Gemini API key")
-    parser.add_argument("--dry-run", action="store_true",
-                       help="Dry run mode - simulate without posting")
-    parser.add_argument("--live", action="store_true",
-                       help="Live mode - actually post to Reddit")
     parser.add_argument("-c", "--comments", type=int, default=3,
                        help="Comments per subreddit")
     parser.add_argument("-s", "--subreddits", nargs="+",
@@ -55,34 +53,35 @@ def main():
         print("ERROR: REDDIT_USERNAME and REDDIT_PASSWORD required!")
         sys.exit(1)
 
-    # Determine mode
-    live_mode = args.live and not args.dry_run
-
+    # Always run in LIVE mode - dry-run has been disabled
     print("")
     print("=" * 60)
-    print("Zeta-Agent Warmup Mode")
+    print("Zeta-Agent Warmup Mode (LIVE)")
     print("=" * 60)
     print(f"  Username: {args.username}")
-    print(f"  Mode: {'LIVE' if live_mode else 'DRY-RUN'}")
+    print(f"  Mode: LIVE (posting to Reddit)")
     print(f"  Comments: {args.comments} per subreddit")
     print(f"  Subreddits: {', '.join(args.subreddits)}")
     
     # Check for proxy
     proxy_server = os.environ.get("REDDIT_PROXY_SERVER")
     if proxy_server:
+        proxy_username = os.environ.get("REDDIT_PROXY_USERNAME")
         print(f"  Proxy: {proxy_server}")
+        if proxy_username:
+            print(f"  Proxy Auth: {proxy_username}@...")
     
     print("=" * 60)
     print("")
 
-    # Run warmup using browser publisher
+    # Run warmup using browser publisher in LIVE mode
     publisher = BrowserPublisher(
         username=args.username,
         password=args.password,
-        mock_mode=not live_mode,  # mock_mode is opposite of live_mode
+        mock_mode=False,  # Always live - no dry-run
         headless=True,
         comments_per_round=args.comments,
-        # Proxy settings from environment
+        # Proxy settings from environment (Webshare residential)
         proxy_server=os.environ.get("REDDIT_PROXY_SERVER"),
         proxy_username=os.environ.get("REDDIT_PROXY_USERNAME"),
         proxy_password=os.environ.get("REDDIT_PROXY_PASSWORD")
