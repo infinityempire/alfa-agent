@@ -1,28 +1,13 @@
 #!/usr/bin/env python3
 """
-Zeta Warmup - Termux Edition
-Reddit HTTP-based warmup script (no Playwright, no browser needed)
+Zeta Warmup - Termux Edition v2
+Reddit session-based warmup (no OAuth2, no Playwright, no App needed)
 Works directly on Termux/Android with native IP.
 """
-import os
-import sys
-import json
-import time
-import random
-import requests
+import os, sys, re, json, time, random, requests
 from datetime import datetime
-from pathlib import Path
 
-# Load .env if exists
-env_path = Path(__file__).parent / ".env"
-if env_path.exists():
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, _, val = line.partition("=")
-            os.environ.setdefault(key.strip(), val.strip())
-
-# ── Config ──────────────────────────────────────────────────────────────────
+# ── Load credentials from env vars ──────────────────────────────────────────
 USERNAME   = os.environ.get("REDDIT_USERNAME", "")
 PASSWORD   = os.environ.get("REDDIT_PASSWORD", "")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
@@ -31,8 +16,8 @@ SUBREDDITS = [
     "AskReddit", "funny", "pics", "todayilearned",
     "mildlyinteresting", "worldnews", "science", "technology"
 ]
-COMMENTS_PER_RUN = 3   # how many comments to post per run
-UPVOTES_PER_RUN  = 10  # how many posts to upvote per run
+COMMENTS_PER_RUN = 3
+UPVOTES_PER_RUN  = 8
 
 WARMUP_COMMENTS = [
     "Great point! I've been thinking about this too.",
@@ -49,359 +34,245 @@ WARMUP_COMMENTS = [
     "Solid point, couldn't agree more.",
     "Really appreciate you sharing this.",
     "This is exactly what I needed to read today.",
-    "Totally underrated post. Deserves more attention.",
 ]
 
-# ── Reddit HTTP Client ───────────────────────────────────────────────────────
-class RedditClient:
-    def __init__(self, username: str, password: str):
-        self.username = username
-        self.password = password
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": f"Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-        })
-        self.token = None
-        self.logged_in = False
+def log(msg):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-    def log(self, msg: str):
-        ts = datetime.now().strftime("%H:%M:%S")
-        print(f"[{ts}] {msg}")
+# ── Reddit Session Login ─────────────────────────────────────────────────────
+def reddit_login(username, password):
+    """Login to Reddit using old.reddit.com session API."""
+    s = requests.Session()
+    s.headers.update({
+        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
+        "Accept": "application/json, text/html",
+        "Accept-Language": "en-US,en;q=0.9",
+    })
 
-    def login(self) -> bool:
-        """Login to Reddit and get access token."""
-        self.log(f"Logging in as u/{self.username}...")
-        try:
-            # Step 1: Get initial cookies
-            r = self.session.get("https://www.reddit.com/", timeout=15)
-            time.sleep(2)
+    log(f"Connecting to Reddit...")
+    try:
+        # Step 1: Visit login page to get cookies
+        r = s.get("https://old.reddit.com/login", timeout=20)
+        time.sleep(1.5)
 
-            # Step 2: Login via API
-            login_data = {
-                "username": self.username,
-                "password": self.password,
-                "dest": "https://www.reddit.com",
-                "csrf_token": self._get_csrf_token(),
-            }
-            headers = {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Origin": "https://www.reddit.com",
-                "Referer": "https://www.reddit.com/login/",
-                "X-Requested-With": "XMLHttpRequest",
-            }
-            r = self.session.post(
-                "https://www.reddit.com/login",
-                data=login_data,
-                headers=headers,
-                timeout=15
-            )
-            if r.status_code == 200:
-                try:
-                    data = r.json()
-                    if data.get("dest") or "reddit.com" in str(data):
-                        self.logged_in = True
-                        self.log("✅ Login successful!")
-                        return True
-                except:
-                    pass
+        # Step 2: Extract uh token from page
+        uh = ""
+        m = re.search(r'name="uh"\s+value="([^"]+)"', r.text)
+        if m:
+            uh = m.group(1)
 
-            # Step 3: Try OAuth token approach
-            return self._login_oauth()
-
-        except Exception as e:
-            self.log(f"❌ Login error: {e}")
-            return self._login_oauth()
-
-    def _get_csrf_token(self) -> str:
-        """Extract CSRF token from Reddit cookies."""
-        for cookie in self.session.cookies:
-            if cookie.name == "csrf_token":
-                return cookie.value
-        return ""
-
-    def _login_oauth(self) -> bool:
-        """Login via Reddit OAuth2 - try multiple known client_ids."""
-        self.log("Trying OAuth2 login...")
-        # Known Reddit official app client_ids (installed app type - no secret needed)
-        client_ids = [
-            ("android", "android:com.reddit.frontpage:v2023.12.0", "android_client_id_1"),
-        ]
-        # Try each approach
-        for attempt_name, user_agent, _ in client_ids:
-            try:
-                # Reddit's userless/installed app flow
-                # For script-type personal use, we use device_id grant
-                import uuid
-                device_id = str(uuid.uuid4())
-                
-                # First get a device token
-                r = requests.post(
-                    "https://www.reddit.com/api/v1/access_token",
-                    auth=requests.auth.HTTPBasicAuth("android_client_id_1", ""),
-                    data={"grant_type": "https://oauth.reddit.com/grants/installed_client", "device_id": device_id},
-                    headers={"User-Agent": user_agent},
-                    timeout=15
-                )
-            except:
-                pass
-        
-        # Use session-based login instead
-        return self._login_session()
-
-    def _login_session(self) -> bool:
-        """Login via Reddit session cookies (old.reddit.com API)."""
-        self.log("Trying session-based login...")
-        try:
-            session = requests.Session()
-            session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/109.0 Firefox/109.0",
-            })
-            
-            # Get login page to get modhash/csrf
-            r = session.get("https://old.reddit.com/login", timeout=15)
-            time.sleep(1)
-            
-            # Extract uh (modhash) from the page
-            import re
-            uh_match = re.search(r'name="uh"\s+value="([^"]+)"', r.text)
-            uh = uh_match.group(1) if uh_match else ""
-            
-            # Login
-            login_data = {
-                "user": self.username,
-                "passwd": self.password,
+        # Step 3: POST login
+        log(f"Logging in as u/{username}...")
+        r = s.post(
+            "https://old.reddit.com/api/login",
+            data={
+                "user": username,
+                "passwd": password,
                 "api_type": "json",
                 "rem": "False",
                 "uh": uh,
-            }
-            r = session.post(
-                "https://old.reddit.com/api/login",
-                data=login_data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=15
-            )
-            
-            if r.status_code == 200:
-                result = r.json()
-                errors = result.get("json", {}).get("errors", [])
-                if not errors:
-                    # Get modhash for API calls
-                    modhash_data = result.get("json", {}).get("data", {})
-                    modhash = modhash_data.get("modhash", "")
-                    if modhash:
-                        self.modhash = modhash
-                        self.session = session
-                        self.session.headers.update({
-                            "X-Modhash": modhash,
-                        })
-                        self.logged_in = True
-                        self.log(f"✅ Session login successful! modhash: {modhash[:10]}...")
-                        return True
-                    else:
-                        self.log(f"⚠️ No modhash in response: {result}")
-                else:
-                    self.log(f"❌ Login errors: {errors}")
-            else:
-                self.log(f"❌ Session login HTTP {r.status_code}: {r.text[:200]}")
-        except Exception as e:
-            self.log(f"❌ Session login error: {e}")
-        return False
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=20
+        )
 
-    def get_hot_posts(self, subreddit: str, limit: int = 25) -> list:
-        """Get hot posts from a subreddit."""
-        try:
-            # Use old.reddit.com JSON API (works with session cookies)
-            url = f"https://old.reddit.com/r/{subreddit}/hot.json?limit={limit}"
-            r = self.session.get(url, timeout=15)
-            if r.status_code == 200:
-                data = r.json()
-                posts = data.get("data", {}).get("children", [])
-                return [p["data"] for p in posts if not p["data"].get("locked") and not p["data"].get("archived")]
-            else:
-                self.log(f"⚠️ Could not fetch r/{subreddit}: HTTP {r.status_code}")
-                return []
-        except Exception as e:
-            self.log(f"⚠️ Error fetching r/{subreddit}: {e}")
-            return []
+        if r.status_code != 200:
+            log(f"❌ Login HTTP {r.status_code}")
+            return None, None
 
-    def post_comment(self, post_id: str, text: str) -> bool:
-        """Post a comment on a Reddit post."""
-        try:
-            url = "https://old.reddit.com/api/comment"
-            data = {
+        result = r.json()
+        errors = result.get("json", {}).get("errors", [])
+        if errors:
+            log(f"❌ Login errors: {errors}")
+            return None, None
+
+        modhash = result.get("json", {}).get("data", {}).get("modhash", "")
+        if not modhash:
+            # Try to get modhash from /api/me.json
+            me = s.get("https://old.reddit.com/api/me.json", timeout=15)
+            if me.status_code == 200:
+                me_data = me.json()
+                modhash = me_data.get("data", {}).get("modhash", "")
+
+        if modhash:
+            s.headers.update({"X-Modhash": modhash})
+            log(f"✅ Logged in! modhash: {modhash[:8]}...")
+            return s, modhash
+        else:
+            # Check if we're actually logged in via cookies
+            me = s.get("https://old.reddit.com/api/me.json", timeout=15)
+            if me.status_code == 200:
+                me_data = me.json()
+                name = me_data.get("data", {}).get("name", "")
+                if name.lower() == username.lower():
+                    modhash = me_data.get("data", {}).get("modhash", "")
+                    s.headers.update({"X-Modhash": modhash})
+                    log(f"✅ Logged in as u/{name}!")
+                    return s, modhash
+
+            log(f"⚠️ Could not get modhash. Response: {json.dumps(result)[:200]}")
+            return None, None
+
+    except Exception as e:
+        log(f"❌ Login error: {e}")
+        return None, None
+
+# ── Reddit API Calls ─────────────────────────────────────────────────────────
+def get_hot_posts(session, subreddit, limit=20):
+    try:
+        r = session.get(
+            f"https://old.reddit.com/r/{subreddit}/hot.json?limit={limit}",
+            timeout=15
+        )
+        if r.status_code == 200:
+            posts = r.json().get("data", {}).get("children", [])
+            return [p["data"] for p in posts
+                    if not p["data"].get("locked")
+                    and not p["data"].get("archived")]
+        log(f"⚠️ r/{subreddit}: HTTP {r.status_code}")
+    except Exception as e:
+        log(f"⚠️ r/{subreddit}: {e}")
+    return []
+
+def post_comment(session, modhash, post_id, text):
+    try:
+        r = session.post(
+            "https://old.reddit.com/api/comment",
+            data={
                 "api_type": "json",
                 "thing_id": f"t3_{post_id}",
                 "text": text,
-            }
-            r = self.session.post(url, data=data, timeout=15)
-            if r.status_code == 200:
-                result = r.json()
-                errors = result.get("json", {}).get("errors", [])
-                if not errors:
-                    return True
-                else:
-                    self.log(f"⚠️ Comment errors: {errors}")
-                    return False
-            else:
-                self.log(f"⚠️ Comment HTTP {r.status_code}: {r.text[:200]}")
-                return False
-        except Exception as e:
-            self.log(f"⚠️ Comment error: {e}")
-            return False
+                "uh": modhash,
+            },
+            timeout=15
+        )
+        if r.status_code == 200:
+            result = r.json()
+            errors = result.get("json", {}).get("errors", [])
+            if not errors:
+                return True
+            log(f"⚠️ Comment errors: {errors}")
+        else:
+            log(f"⚠️ Comment HTTP {r.status_code}: {r.text[:100]}")
+    except Exception as e:
+        log(f"⚠️ Comment error: {e}")
+    return False
 
-    def upvote(self, post_id: str) -> bool:
-        """Upvote a Reddit post."""
-        try:
-            url = "https://old.reddit.com/api/vote"
-            data = {
-                "id": f"t3_{post_id}",
-                "dir": "1",
-            }
-            r = self.session.post(url, data=data, timeout=15)
-            return r.status_code == 200
-        except:
-            return False
+def upvote_post(session, modhash, post_id):
+    try:
+        r = session.post(
+            "https://old.reddit.com/api/vote",
+            data={"id": f"t3_{post_id}", "dir": "1", "uh": modhash},
+            timeout=10
+        )
+        return r.status_code == 200
+    except:
+        return False
 
-    def get_karma(self) -> dict:
-        """Get current karma stats."""
+def get_karma(session):
+    try:
+        r = session.get("https://old.reddit.com/api/me.json", timeout=10)
+        if r.status_code == 200:
+            d = r.json().get("data", {})
+            return d.get("link_karma", 0), d.get("comment_karma", 0)
+    except:
+        pass
+    return 0, 0
+
+def ai_comment(post_title, subreddit):
+    """Generate comment with Gemini AI, fallback to preset."""
+    if GEMINI_KEY:
         try:
-            r = self.session.get("https://old.reddit.com/api/me.json", timeout=15)
-            if r.status_code == 200:
-                data = r.json()
-                return {
-                    "link_karma": data.get("link_karma", 0),
-                    "comment_karma": data.get("comment_karma", 0),
-                    "total_karma": data.get("total_karma", 0),
-                }
+            import google.generativeai as genai
+            genai.configure(api_key=GEMINI_KEY)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            resp = model.generate_content(
+                f"Write a SHORT natural Reddit comment (1-2 sentences) for this post in r/{subreddit}: \"{post_title}\"\n"
+                "Rules: sound human, be relevant, no hashtags/emojis/marketing. Just the comment text."
+            )
+            c = resp.text.strip()
+            return c[:280] if len(c) > 280 else c
         except:
             pass
-        return {}
+    return random.choice(WARMUP_COMMENTS)
 
-
-# ── Gemini AI Comment Generator ─────────────────────────────────────────────
-def generate_comment_with_gemini(post_title: str, subreddit: str) -> str:
-    """Generate a natural comment using Gemini AI."""
-    if not GEMINI_KEY:
-        return random.choice(WARMUP_COMMENTS)
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        prompt = f"""You are a regular Reddit user browsing r/{subreddit}.
-Write a SHORT, natural, friendly comment (1-2 sentences max) for this post:
-"{post_title}"
-
-Rules:
-- Sound like a real human, not a bot
-- Be genuine and relevant to the post
-- No hashtags, no emojis, no marketing
-- Keep it casual and conversational
-- Just the comment text, nothing else"""
-        response = model.generate_content(prompt)
-        comment = response.text.strip()
-        if len(comment) > 300:
-            comment = comment[:300]
-        return comment
-    except Exception as e:
-        return random.choice(WARMUP_COMMENTS)
-
-
-# ── Main Warmup Logic ────────────────────────────────────────────────────────
-def run_warmup():
+# ── Main ─────────────────────────────────────────────────────────────────────
+def main():
     print()
     print("=" * 60)
-    print("  Zeta Warmup - Termux Edition")
-    print(f"  Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("  Zeta Warmup - Termux Edition v2")
+    print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  User: u/{USERNAME}")
     print("=" * 60)
     print()
 
     if not USERNAME or not PASSWORD:
-        print("❌ ERROR: REDDIT_USERNAME and REDDIT_PASSWORD not set!")
-        print("   Edit ~/alfa-agent/.env and add your credentials.")
+        print("❌ Set REDDIT_USERNAME and REDDIT_PASSWORD environment variables!")
         sys.exit(1)
 
-    client = RedditClient(USERNAME, PASSWORD)
-
-    # Login
-    if not client.login():
-        print("❌ Login failed. Check credentials.")
+    session, modhash = reddit_login(USERNAME, PASSWORD)
+    if not session:
+        print("❌ Login failed. Check your Reddit username and password.")
         sys.exit(1)
 
-    # Get karma before
-    karma_before = client.get_karma()
-    if karma_before:
-        print(f"📊 Karma before: {karma_before.get('total_karma', '?')} total")
+    lk, ck = get_karma(session)
+    log(f"📊 Karma: {lk} link / {ck} comment")
 
     comments_posted = 0
     upvotes_done = 0
-    subreddits_visited = []
+    subs_visited = []
 
-    # Shuffle subreddits for variety
     subs = SUBREDDITS.copy()
     random.shuffle(subs)
 
-    for subreddit in subs:
+    for sub in subs:
         if comments_posted >= COMMENTS_PER_RUN and upvotes_done >= UPVOTES_PER_RUN:
             break
 
-        print(f"\n📌 Visiting r/{subreddit}...")
-        posts = client.get_hot_posts(subreddit, limit=20)
-
+        log(f"\n📌 r/{sub}...")
+        posts = get_hot_posts(session, sub)
         if not posts:
-            print(f"   ⚠️ No posts found, skipping...")
             continue
 
-        subreddits_visited.append(subreddit)
-        print(f"   Found {len(posts)} posts")
+        subs_visited.append(sub)
+        log(f"   {len(posts)} posts found")
 
-        # Upvote some posts
+        # Upvote
         for post in posts[:3]:
             if upvotes_done >= UPVOTES_PER_RUN:
                 break
-            if client.upvote(post["id"]):
+            if upvote_post(session, modhash, post["id"]):
                 upvotes_done += 1
-                print(f"   👍 Upvoted: {post['title'][:60]}...")
+                log(f"   👍 Upvoted: {post['title'][:55]}...")
                 time.sleep(random.uniform(1, 3))
 
-        # Post a comment
+        # Comment
         if comments_posted < COMMENTS_PER_RUN:
-            # Pick a post to comment on (not too new, not too old)
-            eligible = [p for p in posts if p.get("num_comments", 0) > 5 and not p.get("locked")]
+            eligible = [p for p in posts if p.get("num_comments", 0) > 3]
             if eligible:
-                post = random.choice(eligible[:10])
-                comment_text = generate_comment_with_gemini(post["title"], subreddit)
-                print(f"   💬 Commenting on: {post['title'][:60]}...")
-                print(f"   📝 Comment: {comment_text}")
-                if client.post_comment(post["id"], comment_text):
+                post = random.choice(eligible[:8])
+                comment = ai_comment(post["title"], sub)
+                log(f"   💬 Commenting: {post['title'][:55]}...")
+                log(f"   📝 \"{comment}\"")
+                if post_comment(session, modhash, post["id"], comment):
                     comments_posted += 1
-                    print(f"   ✅ Comment posted! ({comments_posted}/{COMMENTS_PER_RUN})")
+                    log(f"   ✅ Comment posted! ({comments_posted}/{COMMENTS_PER_RUN})")
                 else:
-                    print(f"   ❌ Comment failed")
+                    log(f"   ❌ Comment failed")
                 time.sleep(random.uniform(5, 10))
 
-        # Human-like delay between subreddits
-        time.sleep(random.uniform(3, 8))
+        time.sleep(random.uniform(3, 7))
 
-    # Get karma after
-    karma_after = client.get_karma()
-
+    lk2, ck2 = get_karma(session)
     print()
     print("=" * 60)
-    print("  Warmup Complete!")
-    print(f"  Subreddits visited: {len(subreddits_visited)}")
-    print(f"  Comments posted: {comments_posted}")
-    print(f"  Upvotes given: {upvotes_done}")
-    if karma_after:
-        print(f"  Karma now: {karma_after.get('total_karma', '?')} total")
+    print("  ✅ Warmup Complete!")
+    print(f"  Subreddits: {len(subs_visited)}")
+    print(f"  Comments:   {comments_posted}/{COMMENTS_PER_RUN}")
+    print(f"  Upvotes:    {upvotes_done}/{UPVOTES_PER_RUN}")
+    print(f"  Karma now:  {lk2} link / {ck2} comment")
     print("=" * 60)
     print()
-
-    return comments_posted > 0 or upvotes_done > 0
-
 
 if __name__ == "__main__":
-    success = run_warmup()
-    sys.exit(0 if success else 1)
+    main()
