@@ -1,24 +1,21 @@
 services:
   - type: cron
     name: alfa-agent-warmup
-    runtime: python
+    runtime: docker
     schedule: "0 9,18 * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python warmup_praw.py
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: REDDIT_USERNAME
         sync: false
       - key: REDDIT_PASSWORD
         sync: false
-      - key: REDDIT_CLIENT_ID
+      - key: REDDIT_PROXY_SERVER
         sync: false
-      - key: REDDIT_CLIENT_SECRET
+      - key: REDDIT_PROXY_USERNAME
         sync: false
-      - key: REDDIT_USER_AGENT
+      - key: REDDIT_PROXY_PASSWORD
         sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: COMMENTS_PER_RUN
         value: "3"
-      - key: PYTHON_VERSION
-        value: "3.11.0"
