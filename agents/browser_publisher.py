@@ -136,9 +136,6 @@ class BrowserPublisher:
             
             context = self.browser.new_context(**context_options)
             
-            # Block detection scripts
-            context.route("**/*", lambda route: route.abort() if "cloudflare" in route.request.url.lower() or "captcha" in route.request.url.lower() else route.continue_())
-            
             self.page = context.new_page()
             
             # Add extra headers to appear more human-like
@@ -189,11 +186,26 @@ class BrowserPublisher:
             try:
                 self.log(f"Navigating to login page (attempt {attempt}/{max_retries})...")
                 
-                # Navigate with longer timeout
-                self.page.goto(self.LOGIN_URL, timeout=90000)
+                # Navigate to Reddit main page first, then click login
+                self.log("Navigating to Reddit main page...")
+                self.page.goto(self.BASE_URL, timeout=90000)
+                time.sleep(3)
+                
+                # Check if already logged in (check for username in header)
+                logged_in_indicator = self.page.query_selector(f'a[href="/user/{self.username}"]')
+                if logged_in_indicator:
+                    self.log(f"Already logged in as {self.username}!")
+                    self._logged_in = True
+                    return True
+                
+                # Click login button if present
+                login_btn = self.page.query_selector('a[href*="login"], button:has-text("Log In"), a:has-text("Log In")')
+                if login_btn:
+                    self.log("Clicking login button...")
+                    login_btn.click()
+                    time.sleep(3)
                 
                 # Wait for page to settle
-                import time
                 time.sleep(5)
                 
                 # Check for Cloudflare or challenge pages
@@ -212,6 +224,9 @@ class BrowserPublisher:
                     self.page.wait_for_load_state("networkidle", timeout=60000)
                     time.sleep(5)
                 
+                self.log(f"Current URL: {self.page.url}")
+                self.log(f"Page title: {self.page.title()}")
+                
                 # Try multiple selectors for the username field
                 username_selectors = [
                     'input[name="username"]',
@@ -226,7 +241,7 @@ class BrowserPublisher:
                 username_field = None
                 for selector in username_selectors:
                     try:
-                        self.page.wait_for_selector(selector, timeout=15000, state="attached")
+                        self.page.wait_for_selector(selector, timeout=10000, state="attached")
                         username_field = self.page.query_selector(selector)
                         if username_field:
                             self.log(f"Found username field with selector: {selector}")
@@ -235,18 +250,6 @@ class BrowserPublisher:
                         continue
                 
                 if not username_field:
-                    # Debug: print page title and some content
-                    try:
-                        title = self.page.title()
-                        self.log(f"Page title: {title}")
-                        self.log(f"Page URL: {self.page.url}")
-                        # Check if it's an OAuth page
-                        if "reddit.com/api/v1/authorize" in self.page.url:
-                            self.log("Detected OAuth page - logging in via OAuth")
-                            self._logged_in = True
-                            return True
-                    except:
-                        pass
                     self.log("Could not find username field", "error")
                     # If using proxy, try without it
                     if use_proxy and self.proxy_server:
