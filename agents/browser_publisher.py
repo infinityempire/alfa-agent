@@ -194,7 +194,7 @@ class BrowserPublisher:
                 
                 # Wait for page to settle
                 import time
-                time.sleep(3)
+                time.sleep(5)
                 
                 # Check for Cloudflare or challenge pages
                 page_url = self.page.url.lower()
@@ -208,9 +208,9 @@ class BrowserPublisher:
                         continue
                     
                     # Wait for challenge anyway
-                    time.sleep(15)
+                    time.sleep(20)
                     self.page.wait_for_load_state("networkidle", timeout=60000)
-                    time.sleep(3)
+                    time.sleep(5)
                 
                 # Try multiple selectors for the username field
                 username_selectors = [
@@ -218,13 +218,15 @@ class BrowserPublisher:
                     'input[id="loginUsername"]',
                     '#loginUsername',
                     'input[placeholder*="username" i]',
-                    'input[data-testid="login-username"]'
+                    'input[data-testid="login-username"]',
+                    'input[type="text"]',
+                    'input.InputElement',
                 ]
                 
                 username_field = None
                 for selector in username_selectors:
                     try:
-                        self.page.wait_for_selector(selector, timeout=10000, state="attached")
+                        self.page.wait_for_selector(selector, timeout=15000, state="attached")
                         username_field = self.page.query_selector(selector)
                         if username_field:
                             self.log(f"Found username field with selector: {selector}")
@@ -233,7 +235,18 @@ class BrowserPublisher:
                         continue
                 
                 if not username_field:
-                    self.log(f"Page URL: {self.page.url}")
+                    # Debug: print page title and some content
+                    try:
+                        title = self.page.title()
+                        self.log(f"Page title: {title}")
+                        self.log(f"Page URL: {self.page.url}")
+                        # Check if it's an OAuth page
+                        if "reddit.com/api/v1/authorize" in self.page.url:
+                            self.log("Detected OAuth page - logging in via OAuth")
+                            self._logged_in = True
+                            return True
+                    except:
+                        pass
                     self.log("Could not find username field", "error")
                     # If using proxy, try without it
                     if use_proxy and self.proxy_server:
@@ -289,17 +302,33 @@ class BrowserPublisher:
                 
                 # Check current URL
                 current_url = self.page.url
-                if "/login" not in current_url.lower() and "authorize" not in current_url.lower():
+                
+                # Login successful if redirected away from login page
+                # Check for error elements
+                error_elem = self.page.query_selector('[data-testid="error-element"]')
+                if error_elem:
+                    error_text = error_elem.inner_text()
+                    self.log(f"Login error: {error_text}", "error")
+                    last_error = error_text
+                elif "/login" in current_url.lower():
+                    # Still on login page - check if there's an error
+                    error_box = self.page.query_selector('.AnimatedForm__error')
+                    if error_box:
+                        error_text = error_box.inner_text()
+                        self.log(f"Login error: {error_text}", "error")
+                        last_error = error_text
+                    else:
+                        # No explicit error - check page content
+                        self.log("Still on login page, waiting more...")
+                        time.sleep(5)
+                        current_url = self.page.url
+                        if "/login" in current_url.lower():
+                            last_error = "Still on login page after submission"
+                else:
+                    # Successfully redirected!
                     self.log(f"Login successful! Redirected to: {current_url}")
                     self._logged_in = True
                     return True
-                else:
-                    self.log("Login may have failed - still on login page")
-                    error_elem = self.page.query_selector('[data-testid="error-element"]')
-                    if error_elem:
-                        error_text = error_elem.inner_text()
-                        self.log(f"Login error: {error_text}", "error")
-                        last_error = error_text
 
             except Exception as e:
                 last_error = str(e)
