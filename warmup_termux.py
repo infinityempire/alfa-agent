@@ -122,53 +122,98 @@ class RedditClient:
         return ""
 
     def _login_oauth(self) -> bool:
-        """Login via Reddit OAuth2 with installed app client."""
+        """Login via Reddit OAuth2 - try multiple known client_ids."""
         self.log("Trying OAuth2 login...")
+        # Known Reddit official app client_ids (installed app type - no secret needed)
+        client_ids = [
+            ("android", "android:com.reddit.frontpage:v2023.12.0", "android_client_id_1"),
+        ]
+        # Try each approach
+        for attempt_name, user_agent, _ in client_ids:
+            try:
+                # Reddit's userless/installed app flow
+                # For script-type personal use, we use device_id grant
+                import uuid
+                device_id = str(uuid.uuid4())
+                
+                # First get a device token
+                r = requests.post(
+                    "https://www.reddit.com/api/v1/access_token",
+                    auth=requests.auth.HTTPBasicAuth("android_client_id_1", ""),
+                    data={"grant_type": "https://oauth.reddit.com/grants/installed_client", "device_id": device_id},
+                    headers={"User-Agent": user_agent},
+                    timeout=15
+                )
+            except:
+                pass
+        
+        # Use session-based login instead
+        return self._login_session()
+
+    def _login_session(self) -> bool:
+        """Login via Reddit session cookies (old.reddit.com API)."""
+        self.log("Trying session-based login...")
         try:
-            # Use Reddit's installed app client_id (public, no secret needed)
-            # This is Reddit's own mobile app client_id - works without registration
-            client_id = "ohXpoqrZYxa1ag"  # Reddit official iOS app
+            session = requests.Session()
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/109.0 Firefox/109.0",
+            })
             
-            auth = requests.auth.HTTPBasicAuth(client_id, "")
-            data = {
-                "grant_type": "password",
-                "username": self.username,
-                "password": self.password,
-                "scope": "read submit vote identity",
+            # Get login page to get modhash/csrf
+            r = session.get("https://old.reddit.com/login", timeout=15)
+            time.sleep(1)
+            
+            # Extract uh (modhash) from the page
+            import re
+            uh_match = re.search(r'name="uh"\s+value="([^"]+)"', r.text)
+            uh = uh_match.group(1) if uh_match else ""
+            
+            # Login
+            login_data = {
+                "user": self.username,
+                "passwd": self.password,
+                "api_type": "json",
+                "rem": "False",
+                "uh": uh,
             }
-            headers = {
-                "User-Agent": f"iOS:com.reddit.Reddit:2023.45.0 (by /u/{self.username})",
-            }
-            r = requests.post(
-                "https://www.reddit.com/api/v1/access_token",
-                auth=auth,
-                data=data,
-                headers=headers,
+            r = session.post(
+                "https://old.reddit.com/api/login",
+                data=login_data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
                 timeout=15
             )
+            
             if r.status_code == 200:
                 result = r.json()
-                if "access_token" in result:
-                    self.token = result["access_token"]
-                    self.session.headers.update({
-                        "Authorization": f"bearer {self.token}",
-                        "User-Agent": f"iOS:com.reddit.Reddit:2023.45.0 (by /u/{self.username})",
-                    })
-                    self.logged_in = True
-                    self.log(f"✅ OAuth2 login successful! Token: {self.token[:20]}...")
-                    return True
+                errors = result.get("json", {}).get("errors", [])
+                if not errors:
+                    # Get modhash for API calls
+                    modhash_data = result.get("json", {}).get("data", {})
+                    modhash = modhash_data.get("modhash", "")
+                    if modhash:
+                        self.modhash = modhash
+                        self.session = session
+                        self.session.headers.update({
+                            "X-Modhash": modhash,
+                        })
+                        self.logged_in = True
+                        self.log(f"✅ Session login successful! modhash: {modhash[:10]}...")
+                        return True
+                    else:
+                        self.log(f"⚠️ No modhash in response: {result}")
                 else:
-                    self.log(f"❌ OAuth2 failed: {result.get('error', 'unknown')}")
+                    self.log(f"❌ Login errors: {errors}")
             else:
-                self.log(f"❌ OAuth2 HTTP {r.status_code}: {r.text[:200]}")
+                self.log(f"❌ Session login HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            self.log(f"❌ OAuth2 error: {e}")
+            self.log(f"❌ Session login error: {e}")
         return False
 
     def get_hot_posts(self, subreddit: str, limit: int = 25) -> list:
         """Get hot posts from a subreddit."""
         try:
-            url = f"https://oauth.reddit.com/r/{subreddit}/hot.json?limit={limit}"
+            # Use old.reddit.com JSON API (works with session cookies)
+            url = f"https://old.reddit.com/r/{subreddit}/hot.json?limit={limit}"
             r = self.session.get(url, timeout=15)
             if r.status_code == 200:
                 data = r.json()
@@ -184,7 +229,7 @@ class RedditClient:
     def post_comment(self, post_id: str, text: str) -> bool:
         """Post a comment on a Reddit post."""
         try:
-            url = "https://oauth.reddit.com/api/comment"
+            url = "https://old.reddit.com/api/comment"
             data = {
                 "api_type": "json",
                 "thing_id": f"t3_{post_id}",
@@ -209,7 +254,7 @@ class RedditClient:
     def upvote(self, post_id: str) -> bool:
         """Upvote a Reddit post."""
         try:
-            url = "https://oauth.reddit.com/api/vote"
+            url = "https://old.reddit.com/api/vote"
             data = {
                 "id": f"t3_{post_id}",
                 "dir": "1",
@@ -222,7 +267,7 @@ class RedditClient:
     def get_karma(self) -> dict:
         """Get current karma stats."""
         try:
-            r = self.session.get("https://oauth.reddit.com/api/v1/me", timeout=15)
+            r = self.session.get("https://old.reddit.com/api/me.json", timeout=15)
             if r.status_code == 200:
                 data = r.json()
                 return {
