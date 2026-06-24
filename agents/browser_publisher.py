@@ -84,7 +84,7 @@ class BrowserPublisher:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         logger.info(f"{prefix} [{timestamp}] {message}")
 
-    def _initialize_browser(self) -> bool:
+    def _initialize_browser(self, use_proxy: bool = True) -> bool:
         """Initialize Playwright browser with optional residential proxy."""
         try:
             self.log("Launching browser...")
@@ -92,8 +92,9 @@ class BrowserPublisher:
             
             launch_options = {"headless": self.headless}
             
+            # Only use proxy if explicitly enabled
             proxy_configured = False
-            if self.proxy_server:
+            if use_proxy and self.proxy_server:
                 self.log(f"Using residential proxy: {self.proxy_server}")
                 proxy_configured = True
                 launch_options["proxy"] = {
@@ -146,11 +147,12 @@ class BrowserPublisher:
     def login(self, max_retries: int = 3) -> bool:
         """Log in to Reddit using browser automation."""
         last_error = None
+        use_proxy = bool(self.proxy_server)
 
         for attempt in range(1, max_retries + 1):
             self._close_browser()
 
-            if not self._initialize_browser():
+            if not self._initialize_browser(use_proxy=use_proxy):
                 last_error = "Failed to initialize browser"
                 continue
 
@@ -162,17 +164,26 @@ class BrowserPublisher:
             try:
                 self.log(f"Navigating to login page (attempt {attempt}/{max_retries})...")
                 
-                # Navigate with longer timeout and wait for network
-                self.page.goto(self.LOGIN_URL, timeout=120000, wait_until="networkidle")
+                # Navigate with longer timeout
+                self.page.goto(self.LOGIN_URL, timeout=90000)
                 
                 # Wait for page to settle
                 import time
-                time.sleep(2)
+                time.sleep(3)
                 
                 # Check for Cloudflare or challenge pages
-                if "challenge" in self.page.url.lower() or self.page.query_selector("#challenge-title"):
-                    self.log("Detected Cloudflare challenge, waiting...")
-                    time.sleep(10)
+                page_url = self.page.url.lower()
+                if "challenge" in page_url or self.page.query_selector("#challenge-title"):
+                    self.log("Detected Cloudflare challenge!")
+                    
+                    # If using proxy, try without it
+                    if use_proxy and self.proxy_server:
+                        self.log("Switching to direct connection (no proxy)...")
+                        use_proxy = False
+                        continue
+                    
+                    # Wait for challenge anyway
+                    time.sleep(15)
                     self.page.wait_for_load_state("networkidle", timeout=60000)
                     time.sleep(3)
                 
@@ -188,7 +199,7 @@ class BrowserPublisher:
                 username_field = None
                 for selector in username_selectors:
                     try:
-                        self.page.wait_for_selector(selector, timeout=5000, state="attached")
+                        self.page.wait_for_selector(selector, timeout=10000, state="attached")
                         username_field = self.page.query_selector(selector)
                         if username_field:
                             self.log(f"Found username field with selector: {selector}")
@@ -197,13 +208,12 @@ class BrowserPublisher:
                         continue
                 
                 if not username_field:
-                    # Take screenshot for debugging
-                    self.page.screenshot(path="/tmp/login_debug.png")
                     self.log(f"Page URL: {self.page.url}")
                     self.log("Could not find username field", "error")
-                    # Try direct URL navigation to Reddit main
-                    self.page.goto("https://www.reddit.com/login/", timeout=60000)
-                    time.sleep(5)
+                    # If using proxy, try without it
+                    if use_proxy and self.proxy_server:
+                        self.log("Retrying without proxy...")
+                        use_proxy = False
                     continue
                 
                 self.log(f"Entering username: {self.username}")
@@ -260,14 +270,11 @@ class BrowserPublisher:
                     return True
                 else:
                     self.log("Login may have failed - still on login page")
-                    # Check for error message
                     error_elem = self.page.query_selector('[data-testid="error-element"]')
                     if error_elem:
                         error_text = error_elem.inner_text()
                         self.log(f"Login error: {error_text}", "error")
                         last_error = error_text
-                    else:
-                        last_error = "Login page still displayed after submit"
 
             except Exception as e:
                 last_error = str(e)
