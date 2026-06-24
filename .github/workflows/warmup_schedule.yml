@@ -9,7 +9,7 @@ on:
 jobs:
   warmup:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -20,17 +20,39 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install dependencies
+      - name: Install Tor
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tor
+          # Enable ControlPort for circuit rotation
+          echo "ControlPort 9051" | sudo tee -a /etc/tor/torrc
+          echo "CookieAuthentication 0" | sudo tee -a /etc/tor/torrc
+          sudo service tor start
+          # Wait for Tor to fully connect (up to 60 seconds)
+          echo "Waiting for Tor to connect..."
+          for i in $(seq 1 12); do
+            if curl --socks5 socks5h://127.0.0.1:9050 --silent --max-time 10 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
+              echo "✅ Tor is connected and working!"
+              break
+            fi
+            echo "Attempt $i/12 - Tor not ready yet, waiting 5s..."
+            sleep 5
+          done
+      
+      - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
           playwright install chromium --with-deps
       
-      - name: Run warmup
+      - name: Run warmup via Tor
         env:
           REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
           REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          USE_TOR: "true"
+          TOR_PROXY: "socks5://127.0.0.1:9050"
+          # Keep proxy secrets for fallback if needed
           REDDIT_PROXY_SERVER: ${{ secrets.REDDIT_PROXY_SERVER }}
           REDDIT_PROXY_USERNAME: ${{ secrets.REDDIT_PROXY_USERNAME }}
           REDDIT_PROXY_PASSWORD: ${{ secrets.REDDIT_PROXY_PASSWORD }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python warmup.py

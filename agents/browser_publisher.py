@@ -95,6 +95,19 @@ class BrowserPublisher:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         logger.info(f"{prefix} [{timestamp}] {message}")
 
+    def _rotate_tor_circuit(self):
+        """Request a new Tor circuit to get a fresh IP."""
+        try:
+            import socket
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect(('127.0.0.1', 9051))
+                s.sendall(b'AUTHENTICATE ""\r\nSIGNAL NEWNYM\r\nQUIT\r\n')
+                self.log("Tor circuit rotated — new IP assigned")
+                time.sleep(5)  # Wait for new circuit to establish
+        except Exception as e:
+            self.log(f"Could not rotate Tor circuit: {e}", "warning")
+            time.sleep(3)
+
     def _initialize_browser(self, use_proxy: bool = True) -> bool:
         """Initialize Playwright browser with stealth settings."""
         try:
@@ -103,9 +116,19 @@ class BrowserPublisher:
             
             launch_options = {"headless": self.headless}
             
-            # Only use proxy if explicitly enabled
+            # Priority 1: Tor SOCKS5 proxy (free, rotating IP)
+            tor_proxy = os.environ.get("TOR_PROXY", "socks5://127.0.0.1:9050")
+            use_tor = os.environ.get("USE_TOR", "true").lower() == "true"
+            
             proxy_configured = False
-            if use_proxy and self.proxy_server:
+            if use_tor and use_proxy:
+                self.log(f"Using Tor SOCKS5 proxy: {tor_proxy}")
+                proxy_configured = True
+                launch_options["proxy"] = {
+                    "server": tor_proxy,
+                }
+            elif use_proxy and self.proxy_server:
+                # Fallback to paid proxy if Tor not available
                 self.log(f"Using residential proxy: {self.proxy_server}")
                 proxy_configured = True
                 launch_options["proxy"] = {
@@ -167,10 +190,10 @@ class BrowserPublisher:
         self.page = None
         self._playwright = None
 
-    def login(self, max_retries: int = 3) -> bool:
-        """Log in to Reddit using browser automation."""
+    def login(self, max_retries: int = 5) -> bool:
+        """Log in to Reddit using browser automation with Tor retry logic."""
         last_error = None
-        use_proxy = bool(self.proxy_server)
+        use_proxy = True  # Always try with Tor first
 
         for attempt in range(1, max_retries + 1):
             self._close_browser()
@@ -212,18 +235,9 @@ class BrowserPublisher:
                 # Check for Cloudflare or challenge pages
                 page_url = self.page.url.lower()
                 if "challenge" in page_url or self.page.query_selector("#challenge-title"):
-                    self.log("Detected Cloudflare challenge!")
-                    
-                    # If using proxy, try without it
-                    if use_proxy and self.proxy_server:
-                        self.log("Switching to direct connection (no proxy)...")
-                        use_proxy = False
-                        continue
-                    
-                    # Wait for challenge anyway
-                    time.sleep(20)
-                    self.page.wait_for_load_state("networkidle", timeout=60000)
-                    time.sleep(5)
+                    self.log(f"Detected Cloudflare challenge on attempt {attempt}! Rotating Tor circuit...")
+                    self._rotate_tor_circuit()
+                    continue  # Retry with new Tor IP
                 
                 self.log(f"Current URL: {self.page.url}")
                 self.log(f"Page title: {self.page.title()}")
@@ -251,11 +265,8 @@ class BrowserPublisher:
                         continue
                 
                 if not username_field:
-                    self.log("Could not find username field", "error")
-                    # If using proxy, try without it
-                    if use_proxy and self.proxy_server:
-                        self.log("Retrying without proxy...")
-                        use_proxy = False
+                    self.log("Could not find username field — rotating Tor circuit...", "error")
+                    self._rotate_tor_circuit()
                     continue
                 
                 self.log(f"Entering username: {self.username}")
