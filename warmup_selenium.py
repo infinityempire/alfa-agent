@@ -212,20 +212,33 @@ def post_comment_via_browser(driver, post_url, comment_text):
 
         comment_box = None
 
-        # Try 1: div[contenteditable='true'] (Shreddit rich text editor)
+        # Try 1: div[contenteditable='true'] — skip reCAPTCHA iframes
         try:
-            comment_box = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "div[contenteditable='true']"))
+            boxes = WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div[contenteditable='true']"))
             )
-            log("   Found contenteditable div")
+            for box in boxes:
+                # Skip hidden or zero-size elements
+                if box.is_displayed() and box.size.get('height', 0) > 5:
+                    comment_box = box
+                    log("   Found contenteditable div")
+                    break
         except:
             pass
 
-        # Try 2: plain textarea fallback
+        # Try 2: visible textarea (not reCAPTCHA)
         if not comment_box:
             try:
-                comment_box = driver.find_element(By.CSS_SELECTOR, "textarea")
-                log("   Found textarea")
+                textareas = driver.find_elements(By.CSS_SELECTOR, "textarea")
+                for ta in textareas:
+                    name = ta.get_attribute("name") or ""
+                    cls  = ta.get_attribute("class") or ""
+                    if "recaptcha" in name.lower() or "recaptcha" in cls.lower():
+                        continue
+                    if ta.is_displayed():
+                        comment_box = ta
+                        log("   Found textarea")
+                        break
             except:
                 pass
 
@@ -234,7 +247,7 @@ def post_comment_via_browser(driver, post_url, comment_text):
             return False
 
         # Click to focus, then type
-        driver.execute_script("arguments[0].scrollIntoView(true);", comment_box)
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", comment_box)
         time.sleep(0.5)
         comment_box.click()
         time.sleep(0.5)
