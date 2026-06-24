@@ -33,4 +33,4 @@ jobs:
           REDDIT_PROXY_USERNAME: ${{ secrets.REDDIT_PROXY_USERNAME }}
           REDDIT_PROXY_PASSWORD: ${{ secrets.REDDIT_PROXY_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python warmup.py --live
+        run: python warmup.py
