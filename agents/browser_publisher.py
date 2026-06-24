@@ -99,14 +99,21 @@ class BrowserPublisher:
         """Request a new Tor circuit to get a fresh IP."""
         try:
             import socket
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect(('127.0.0.1', 9051))
-                s.sendall(b'AUTHENTICATE ""\r\nSIGNAL NEWNYM\r\nQUIT\r\n')
-                self.log("Tor circuit rotated — new IP assigned")
-                time.sleep(5)  # Wait for new circuit to establish
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(5)
+            s.connect(('127.0.0.1', 9051))
+            s.sendall(b'AUTHENTICATE ""\r\n')
+            time.sleep(0.5)
+            s.sendall(b'SIGNAL NEWNYM\r\n')
+            time.sleep(0.5)
+            s.sendall(b'QUIT\r\n')
+            response = s.recv(1024).decode('utf-8', errors='ignore')
+            s.close()
+            self.log(f"Tor circuit rotated — new IP assigned (response: {response[:50]})")
+            time.sleep(8)  # Wait for new circuit to establish
         except Exception as e:
-            self.log(f"Could not rotate Tor circuit: {e}", "warning")
-            time.sleep(3)
+            self.log(f"Could not rotate Tor circuit (ControlPort): {e} — waiting for natural rotation", "warning")
+            time.sleep(10)  # Wait longer for natural IP change
 
     def _initialize_browser(self, use_proxy: bool = True) -> bool:
         """Initialize Playwright browser with stealth settings."""
