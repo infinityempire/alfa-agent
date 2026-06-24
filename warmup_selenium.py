@@ -226,16 +226,22 @@ def post_comment_via_browser(driver, post_url, comment_text):
         except:
             pass
 
-        # Try 2: visible textarea (not reCAPTCHA)
+        # Try 2: visible textarea (not reCAPTCHA, not hidden)
         if not comment_box:
             try:
                 textareas = driver.find_elements(By.CSS_SELECTOR, "textarea")
                 for ta in textareas:
-                    name = ta.get_attribute("name") or ""
-                    cls  = ta.get_attribute("class") or ""
-                    if "recaptcha" in name.lower() or "recaptcha" in cls.lower():
+                    name = (ta.get_attribute("name") or "").lower()
+                    cls  = (ta.get_attribute("class") or "").lower()
+                    tid  = (ta.get_attribute("id") or "").lower()
+                    # Skip reCAPTCHA and hidden textareas
+                    if any(x in name+cls+tid for x in ["recaptcha", "g-recaptcha", "captcha"]):
                         continue
-                    if ta.is_displayed():
+                    # Check actual size via JS (not just is_displayed)
+                    rect = driver.execute_script(
+                        "var r=arguments[0].getBoundingClientRect(); return {w:r.width,h:r.height};", ta
+                    )
+                    if rect.get('h', 0) > 10 and rect.get('w', 0) > 10:
                         comment_box = ta
                         log("   Found textarea")
                         break
