@@ -9,6 +9,7 @@ import asyncio
 import random
 import sys
 import os
+import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -529,7 +530,6 @@ class BrowserPublisher:
                         self.log(f"Posted comment on: {submission.title[:50]}...")
                         
                         # Small delay
-                        import time
                         time.sleep(random.randint(2, 5))
                         
                 except Exception as e:
