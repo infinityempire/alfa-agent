@@ -87,48 +87,58 @@ def login(driver):
     time.sleep(4)
 
     try:
-        # Reddit uses faceplate-text-input (Web Component) — find inner <input> via JS
-        user_field = driver.execute_script(
-            "return document.querySelector('#login-username input') "
-            "|| document.querySelector('input[name=username]') "
-            "|| document.querySelector('faceplate-text-input[name=username] input');"
-        )
-        if not user_field:
-            # Fallback: try all inputs
-            inputs = driver.find_elements(By.TAG_NAME, "input")
-            log(f"Found {len(inputs)} input elements")
-            for inp in inputs:
-                t = inp.get_attribute("type") or ""
-                n = inp.get_attribute("name") or ""
-                log(f"  input type={t} name={n}")
-            user_field = inputs[0] if inputs else None
+        # Reddit uses faceplate-text-input (Web Component) with Shadow DOM
+        # Must access via shadowRoot
+        user_field = driver.execute_script("""
+            var els = document.querySelectorAll('faceplate-text-input');
+            for (var i=0; i<els.length; i++) {
+                var sr = els[i].shadowRoot;
+                if (!sr) continue;
+                var inp = sr.querySelector('input');
+                if (inp && (inp.name === 'username' || inp.type === 'text' || inp.type === '')) {
+                    return inp;
+                }
+            }
+            return null;
+        """)
 
         if not user_field:
-            log("❌ Username field not found")
+            log("❌ Username shadow input not found")
             return False
 
         driver.execute_script("arguments[0].value = '';", user_field)
         driver.execute_script("arguments[0].focus();", user_field)
         user_field.send_keys(USERNAME)
+        # Trigger input event so React/Lit picks up the value
+        driver.execute_script(
+            "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));",
+            user_field
+        )
         time.sleep(0.5)
 
-        # Password field
-        pass_field = driver.execute_script(
-            "return document.querySelector('#login-password input') "
-            "|| document.querySelector('input[name=password]') "
-            "|| document.querySelector('faceplate-text-input[name=password] input');"
-        )
-        if not pass_field:
-            inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='password']")
-            pass_field = inputs[0] if inputs else None
+        # Password field — also in Shadow DOM
+        pass_field = driver.execute_script("""
+            var els = document.querySelectorAll('faceplate-text-input');
+            for (var i=0; i<els.length; i++) {
+                var sr = els[i].shadowRoot;
+                if (!sr) continue;
+                var inp = sr.querySelector('input[type=password]');
+                if (inp) return inp;
+            }
+            return null;
+        """)
 
         if not pass_field:
-            log("❌ Password field not found")
+            log("❌ Password shadow input not found")
             return False
 
         driver.execute_script("arguments[0].value = '';", pass_field)
         driver.execute_script("arguments[0].focus();", pass_field)
         pass_field.send_keys(PASSWORD)
+        driver.execute_script(
+            "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));",
+            pass_field
+        )
         time.sleep(0.5)
 
         # Submit button
