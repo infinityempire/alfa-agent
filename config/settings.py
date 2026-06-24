@@ -65,7 +65,7 @@ PUBLISHING_CONFIG = {
     "min_delay_minutes": 7,
     "max_delay_minutes": 25,
     "max_posts_per_run": 5,
-    "dry_run": os.getenv("DRY_RUN", "true").lower() == "true",
+    "dry_run": os.getenv("DRY_RUN", "false").lower() == "true",  # Default is FALSE - LIVE mode
 }
 
 # Data source path (local reporting data)
