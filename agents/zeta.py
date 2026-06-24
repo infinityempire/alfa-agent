@@ -8,6 +8,7 @@ import asyncio
 import argparse
 import json
 import sys
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional
@@ -23,7 +24,7 @@ from utils.delay import get_random_delay_seconds
 
 from agents.reddit_scraper import RedditScraperAgent
 from agents.gemini_writer import GeminiWriterAgent
-from agents.publishing_engine import PublishingEngine
+from agents.browser_publisher import BrowserPublisher
 
 
 class Zeta:
@@ -33,7 +34,7 @@ class Zeta:
     A multi-agent system that:
     1. Scrapes Reddit posts from target subreddits
     2. Generates human-like comments using Gemini AI
-    3. Publishes with randomized delays to avoid detection
+    3. Publishes via browser automation with residential proxy
     """
     
     def __init__(self, dry_run: bool = True):
@@ -48,7 +49,7 @@ class Zeta:
         self.dry_run = dry_run
         self.reddit_scraper = None
         self.gemini_writer = None
-        self.publishing_engine = None
+        self.browser_publisher = None
         self._initialized = False
         
         logger.info(f"🤖 {self} initialized")
@@ -66,7 +67,25 @@ class Zeta:
         try:
             self.reddit_scraper = RedditScraperAgent(mock_mode=self.dry_run)
             self.gemini_writer = GeminiWriterAgent(mock_mode=self.dry_run)
-            self.publishing_engine = PublishingEngine(mock_mode=self.dry_run)
+            
+            # Initialize browser publisher with proxy support
+            username = os.environ.get("REDDIT_USERNAME")
+            password = os.environ.get("REDDIT_PASSWORD")
+            if username and password:
+                self.browser_publisher = BrowserPublisher(
+                    username=username,
+                    password=password,
+                    mock_mode=self.dry_run,
+                    headless=True,
+                    comments_per_round=PUBLISHING_CONFIG["max_posts_per_run"],
+                    proxy_server=os.environ.get("REDDIT_PROXY_SERVER"),
+                    proxy_username=os.environ.get("REDDIT_PROXY_USERNAME"),
+                    proxy_password=os.environ.get("REDDIT_PROXY_PASSWORD")
+                )
+            else:
+                logger.warning("Reddit credentials not found. Running in mock mode.")
+                self.browser_publisher = None
+                self.dry_run = True
             
             self._initialized = True
             logger.info(f"{self} ready for operation")
@@ -124,7 +143,7 @@ class Zeta:
     
     async def act(self, results: List[Dict[str, Any]], max_posts: Optional[int] = None) -> List[Dict[str, Any]]:
         """
-        Act/Publishing phase - Post to Reddit.
+        Act/Publishing phase - Post to Reddit via browser.
         
         Args:
             results: Generated comment results
@@ -133,24 +152,22 @@ class Zeta:
         Returns:
             Publishing results
         """
-        if self.dry_run:
+        if self.dry_run or not self.browser_publisher:
             logger.info("🎭 ZETA DRY RUN - No posts made")
             successful = [r for r in results if r["success"] and r.get("generated_comment")]
             for r in successful[:5]:
                 logger.info(f"   → {r['post_title'][:50]}...")
             return []
         
-        logger.info("🎯 ZETA PUBLISHING...")
+        logger.info("🎯 ZETA PUBLISHING via browser...")
         
-        successful = [
-            {"post_id": r["post_id"], "comment": r["generated_comment"]}
-            for r in results
-            if r["success"] and r.get("generated_comment")
-        ]
+        # Use browser warmup for publishing
+        warmup_results = self.browser_publisher.warmup(
+            subreddits=results[0].get("subreddit") if results else "startups"
+        )
         
-        publishing_results = await self.publishing_engine.publish_queue(successful, max_posts)
-        logger.info(f"📤 Published {len(publishing_results)} comments")
-        return publishing_results
+        logger.info(f"📤 Browser publishing complete: {warmup_results}")
+        return [warmup_results]
     
     async def run(
         self,
