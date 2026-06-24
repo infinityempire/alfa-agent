@@ -1,6 +1,8 @@
 """
-Browser-based Publishing Engine using Playwright.
-Alternative to PRAW for posting comments - requires only username/password.
+Browser-based Publishing Engine using Playwright + PRAW hybrid.
+Primary: Browser automation with proxy
+Fallback: PRAW API when browser fails
+
 Supports Residential Proxy for bypassing anti-bot detection.
 """
 import asyncio
@@ -16,7 +18,15 @@ except ImportError:
     print("ERROR: Playwright not installed. Run: pip install playwright && python -m playwright install chromium")
     sys.exit(1)
 
-from config.settings import PUBLISHING_CONFIG
+# Try importing PRAW for fallback
+try:
+    import praw
+    PRAW_AVAILABLE = True
+except ImportError:
+    PRAW_AVAILABLE = False
+    print("WARNING: PRAW not installed. Browser-only mode active.")
+
+from config.settings import PUBLISHING_CONFIG, REDDIT_CONFIG
 from utils.logger import logger
 from utils.state import state_manager
 
@@ -428,12 +438,69 @@ class BrowserPublisher:
 
         return results
 
+    def _warmup_praw(self, subreddits: List[str]) -> Dict[str, Any]:
+        """Fallback warmup using PRAW API."""
+        if not PRAW_AVAILABLE:
+            return {"error": "PRAW not available"}
+        
+        self.log("Attempting PRAW fallback for warmup...")
+        
+        try:
+            reddit = praw.Reddit(
+                client_id=REDDIT_CONFIG.get("client_id"),
+                client_secret=REDDIT_CONFIG.get("client_secret"),
+                user_agent=REDDIT_CONFIG.get("user_agent") or "ZetaAgent/1.0",
+                username=self.username,
+                password=self.password,
+            )
+            
+            results = {
+                "subreddits_visited": [],
+                "comments_attempted": 0,
+                "comments_posted": 0,
+            }
+            
+            comments = self.WARMUP_COMMENTS
+            
+            for subreddit in subreddits[:3]:  # Limit to 3 subreddits
+                if results["comments_posted"] >= self.comments_per_round:
+                    break
+                
+                results["subreddits_visited"].append(subreddit)
+                self.log(f"Visiting r/{subreddit} via PRAW...")
+                
+                try:
+                    sub = reddit.subreddit(subreddit)
+                    for submission in sub.hot(limit=5):
+                        if results["comments_posted"] >= self.comments_per_round:
+                            break
+                        
+                        comment_text = random.choice(comments)
+                        submission.reply(comment_text)
+                        results["comments_attempted"] += 1
+                        results["comments_posted"] += 1
+                        self.log(f"Posted comment on: {submission.title[:50]}...")
+                        
+                        # Small delay
+                        import time
+                        time.sleep(random.randint(2, 5))
+                        
+                except Exception as e:
+                    self.log(f"Error posting to r/{subreddit}: {e}", "error")
+                    continue
+            
+            return results
+            
+        except Exception as e:
+            self.log(f"PRAW fallback failed: {e}", "error")
+            return {"error": str(e)}
+
     def warmup(self, subreddits: List[str] = None) -> Dict[str, Any]:
         default_subreddits = ["AskReddit", "funny", "pics", "todayilearned", "mildlyinteresting"]
         target_subreddits = subreddits or default_subreddits
 
         self.log("=" * 50)
-        self.log("STARTING ZETA REDDIT WARMUP (Browser Mode)")
+        self.log("STARTING ZETA REDDIT WARMUP")
         self.log(f"Mode: {'DRY-RUN' if self.mock_mode else 'LIVE'}")
         if self.proxy_server:
             self.log(f"Proxy: {self.proxy_server}")
@@ -447,16 +514,28 @@ class BrowserPublisher:
             "warmup_results": {},
             "mode": "dry_run" if self.mock_mode else "live",
             "username": self.username,
+            "method": "browser",
         }
 
         try:
-            results["login_success"] = self.login()
-
-            if results["login_success"] or self.mock_mode:
+            # Try browser first
+            if not self.mock_mode:
+                results["login_success"] = self.login()
+                
+                if results["login_success"]:
+                    results["warmup_results"] = self._browse_and_warmup(target_subreddits)
+                    results["success"] = True
+                elif PRAW_AVAILABLE and REDDIT_CONFIG.get("client_id"):
+                    # Fallback to PRAW if browser fails
+                    self.log("Browser login failed, trying PRAW fallback...", "warning")
+                    results["warmup_results"] = self._warmup_praw(target_subreddits)
+                    results["success"] = "error" not in results["warmup_results"]
+                    results["method"] = "praw_fallback"
+                else:
+                    self.log("Cannot run warmup - browser login failed and PRAW not available", "error")
+            else:
                 results["warmup_results"] = self._browse_and_warmup(target_subreddits)
                 results["success"] = True
-            else:
-                self.log("Cannot run warmup - login failed", "error")
 
         except Exception as e:
             self.log(f"Warmup error: {e}", "error")
@@ -468,6 +547,7 @@ class BrowserPublisher:
         self.log("=" * 50)
         self.log("ZETA WARMUP COMPLETE")
         self.log(f"Success: {results['success']}")
+        self.log(f"Method: {results['method']}")
         self.log(f"Comments posted: {results.get('warmup_results', {}).get('comments_posted', 0)}")
         self.log("=" * 50)
 
