@@ -123,9 +123,9 @@ class BrowserPublisher:
             
             launch_options = {"headless": self.headless}
             
-            # Priority 1: Tor SOCKS5 proxy (free, rotating IP)
+            # Tor proxy (only when USE_TOR=true, disabled for self-hosted runner)
             tor_proxy = os.environ.get("TOR_PROXY", "socks5://127.0.0.1:9050")
-            use_tor = os.environ.get("USE_TOR", "true").lower() == "true"
+            use_tor = os.environ.get("USE_TOR", "false").lower() == "true"
             
             proxy_configured = False
             if use_tor and use_proxy:

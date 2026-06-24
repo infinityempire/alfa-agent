@@ -8,65 +8,23 @@ on:
 
 jobs:
   warmup:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 20
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      - name: Install and configure Tor
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y tor
-          
-          # Configure Tor with ControlPort and preferred exit nodes
-          sudo bash -c 'cat >> /etc/tor/torrc << EOF
-          ControlPort 9051
-          CookieAuthentication 0
-          HashedControlPassword ""
-          ExitNodes {us},{ca},{gb},{de},{nl},{se},{ch}
-          StrictNodes 0
-          EOF'
-          
-          sudo service tor restart
-          
-          # Wait for Tor to fully bootstrap (up to 90 seconds)
-          echo "Waiting for Tor to bootstrap..."
-          for i in $(seq 1 18); do
-            STATUS=$(sudo -u debian-tor tor --verify-config 2>/dev/null; systemctl is-active tor 2>/dev/null || service tor status 2>/dev/null | grep -c "active\|running" || echo "0")
-            TOR_TEST=$(curl --socks5 socks5h://127.0.0.1:9050 --silent --max-time 15 https://check.torproject.org/api/ip 2>/dev/null || echo "")
-            if echo "$TOR_TEST" | grep -q '"IsTor":true'; then
-              echo "✅ Tor is connected! IP via Tor confirmed."
-              echo "$TOR_TEST"
-              break
-            fi
-            echo "Attempt $i/18 - waiting 5s..."
-            sleep 5
-          done
-          
-          # Verify ControlPort is accessible
-          echo "Testing Tor ControlPort..."
-          echo -e 'AUTHENTICATE ""\r\nGETINFO version\r\nQUIT' | nc -q1 127.0.0.1 9051 || echo "ControlPort test done"
-      
+
       - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
-          playwright install chromium --with-deps
-      
-      - name: Run warmup via Tor
+          python -m playwright install chromium --with-deps || true
+
+      - name: Run warmup (LIVE mode - native IP)
         env:
           REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
           REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          USE_TOR: "true"
-          TOR_PROXY: "socks5://127.0.0.1:9050"
-          REDDIT_PROXY_SERVER: ${{ secrets.REDDIT_PROXY_SERVER }}
-          REDDIT_PROXY_USERNAME: ${{ secrets.REDDIT_PROXY_USERNAME }}
-          REDDIT_PROXY_PASSWORD: ${{ secrets.REDDIT_PROXY_PASSWORD }}
+          USE_TOR: "false"
+          DRY_RUN: "false"
         run: python warmup.py
