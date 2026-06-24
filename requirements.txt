@@ -1,4 +1,4 @@
-# Reddit API Client (optional - use browser_publisher.py instead)
+# Reddit API Client
 praw>=7.7.0
 
 # Google Gemini API
@@ -7,7 +7,7 @@ google-genai>=0.8.0
 # Environment Variables
 python-dotenv>=1.0.0
 
-# HTTP Requests (for additional API calls if needed)
+# HTTP Requests
 requests>=2.31.0
 
 # Async support
@@ -21,6 +21,3 @@ colorlog>=6.8.0
 
 # Time handling
 python-dateutil>=2.8.0
-
-# Browser Automation (for warmup mode without Reddit API keys)
-playwright>=1.40.0

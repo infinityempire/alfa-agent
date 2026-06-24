@@ -1,0 +1,24 @@
+services:
+  - type: cron
+    name: alfa-agent-warmup
+    runtime: python
+    schedule: "0 9,18 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python warmup_praw.py
+    envVars:
+      - key: REDDIT_USERNAME
+        sync: false
+      - key: REDDIT_PASSWORD
+        sync: false
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USER_AGENT
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: COMMENTS_PER_RUN
+        value: "3"
+      - key: PYTHON_VERSION
+        value: "3.11.0"
