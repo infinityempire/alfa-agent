@@ -84,44 +84,81 @@ def login(driver):
 
     log("Opening Reddit login page...")
     driver.get("https://www.reddit.com/login/")
-    time.sleep(3)
-
-    wait = WebDriverWait(driver, 15)
+    time.sleep(4)
 
     try:
-        # Fill username
-        user_field = wait.until(EC.presence_of_element_located((By.ID, "login-username")))
-        user_field.clear()
+        # Reddit uses faceplate-text-input (Web Component) — find inner <input> via JS
+        user_field = driver.execute_script(
+            "return document.querySelector('#login-username input') "
+            "|| document.querySelector('input[name=username]') "
+            "|| document.querySelector('faceplate-text-input[name=username] input');"
+        )
+        if not user_field:
+            # Fallback: try all inputs
+            inputs = driver.find_elements(By.TAG_NAME, "input")
+            log(f"Found {len(inputs)} input elements")
+            for inp in inputs:
+                t = inp.get_attribute("type") or ""
+                n = inp.get_attribute("name") or ""
+                log(f"  input type={t} name={n}")
+            user_field = inputs[0] if inputs else None
+
+        if not user_field:
+            log("❌ Username field not found")
+            return False
+
+        driver.execute_script("arguments[0].value = '';", user_field)
+        driver.execute_script("arguments[0].focus();", user_field)
         user_field.send_keys(USERNAME)
         time.sleep(0.5)
 
-        # Fill password
-        pass_field = driver.find_element(By.ID, "login-password")
-        pass_field.clear()
+        # Password field
+        pass_field = driver.execute_script(
+            "return document.querySelector('#login-password input') "
+            "|| document.querySelector('input[name=password]') "
+            "|| document.querySelector('faceplate-text-input[name=password] input');"
+        )
+        if not pass_field:
+            inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='password']")
+            pass_field = inputs[0] if inputs else None
+
+        if not pass_field:
+            log("❌ Password field not found")
+            return False
+
+        driver.execute_script("arguments[0].value = '';", pass_field)
+        driver.execute_script("arguments[0].focus();", pass_field)
         pass_field.send_keys(PASSWORD)
         time.sleep(0.5)
 
-        # Click login button
-        login_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-        login_btn.click()
-        log("Login button clicked, waiting...")
-        time.sleep(5)
+        # Submit button
+        submit = driver.execute_script(
+            "return document.querySelector('button[type=submit]') "
+            "|| document.querySelector('auth-flow-modal button');"
+        )
+        if submit:
+            submit.click()
+        else:
+            from selenium.webdriver.common.keys import Keys
+            pass_field.send_keys(Keys.RETURN)
 
-        # Check if logged in
+        log("Login submitted, waiting...")
+        time.sleep(6)
+
         current_url = driver.current_url
         log(f"URL after login: {current_url}")
 
         if "login" not in current_url.lower():
-            log(f"✅ Login successful!")
+            log("✅ Login successful!")
             return True
-        else:
-            # Try checking page source for username
-            page = driver.page_source
-            if USERNAME.lower() in page.lower():
-                log(f"✅ Login successful (found username in page)!")
-                return True
-            log("❌ Still on login page")
-            return False
+
+        page = driver.page_source
+        if USERNAME.lower() in page.lower():
+            log("✅ Login successful (username found in page)!")
+            return True
+
+        log("❌ Still on login page")
+        return False
 
     except Exception as e:
         log(f"❌ Login error: {e}")
