@@ -59,8 +59,12 @@ pass_field.send_keys(PASSWORD)
 driver.execute_script("arguments[0].dispatchEvent(new Event('input', {bubbles:true}));", pass_field)
 time.sleep(0.3)
 
+from selenium.webdriver.common.keys import Keys
 submit = driver.execute_script("return document.querySelector('button[type=submit]');")
-submit.click()
+if submit:
+    submit.click()
+else:
+    pass_field.send_keys(Keys.RETURN)
 time.sleep(6)
 print(f"[*] Logged in. URL: {driver.current_url}")
 
