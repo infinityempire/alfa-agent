@@ -95,9 +95,9 @@ class BrowserPublisher:
         logger.info(f"{prefix} [{timestamp}] {message}")
 
     def _initialize_browser(self, use_proxy: bool = True) -> bool:
-        """Initialize Playwright browser with optional residential proxy."""
+        """Initialize Playwright browser with stealth settings."""
         try:
-            self.log("Launching browser...")
+            self.log("Launching browser with stealth settings...")
             self._playwright = sync_playwright().start()
             
             launch_options = {"headless": self.headless}
@@ -116,10 +116,15 @@ class BrowserPublisher:
             
             self.browser = self._playwright.chromium.launch(**launch_options)
 
+            # Stealth context options to avoid detection
             context_options = {
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "viewport": {"width": 1280, "height": 720},
+                # Rotate user agent
+                "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                "viewport": {"width": 1920, "height": 1080},
                 "locale": "en-US",
+                "timezone_id": "Europe/London",
+                "geolocation": {"latitude": 51.5074, "longitude": -0.1278},  # London
+                "permissions": ["geolocation"],
             }
             
             if proxy_configured and self.proxy_username and self.proxy_password:
@@ -130,9 +135,19 @@ class BrowserPublisher:
                 }
             
             context = self.browser.new_context(**context_options)
+            
+            # Block detection scripts
+            context.route("**/*", lambda route: route.abort() if "cloudflare" in route.request.url.lower() or "captcha" in route.request.url.lower() else route.continue_())
+            
             self.page = context.new_page()
+            
+            # Add extra headers to appear more human-like
+            self.page.set_extra_http_headers({
+                "Accept-Language": "en-GB,en;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            })
 
-            self.log("Browser launched successfully")
+            self.log("Browser launched successfully with stealth settings")
             return True
 
         except Exception as e:
