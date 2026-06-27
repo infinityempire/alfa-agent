@@ -50,9 +50,11 @@ def log(msg, level="info"):
     ts = time.strftime("%H:%M:%S")
     print(f"{prefix} [{ts}] {msg}", flush=True)
 
-def run(cmd, check=True, capture=False, shell=True):
+def run(cmd, check=True, capture=False, shell=False):
     """הרצת פקודה עם טיפול בשגיאות."""
     try:
+        if isinstance(cmd, str) and not shell:
+            cmd = cmd.split()
         result = subprocess.run(
             cmd, shell=shell, check=check,
             capture_output=capture, text=True
@@ -113,7 +115,7 @@ def install_packages():
     packages = ["python", "git", "curl", "wget", "proot", "binutils"]
     for pkg in packages:
         log(f"  Installing {pkg}...", "step")
-        run(f"pkg install -y {pkg}", check=False)
+        subprocess.run(["pkg", "install", "-y", pkg], check=False, capture_output=True, text=True)
     log("Termux packages installed", "info")
 
 def install_python_deps():
@@ -122,7 +124,7 @@ def install_python_deps():
     deps = ["requests", "playwright"]
     for dep in deps:
         log(f"  pip install {dep}...", "step")
-        run(f"pip install {dep}", check=False)
+        subprocess.run(["pip", "install", dep], check=False, capture_output=True, text=True)
     log("Python dependencies installed", "info")
 
 def download_runner():
@@ -138,11 +140,11 @@ def download_runner():
     if os.path.exists(dest):
         log("Runner archive already exists, skipping download", "info")
     else:
-        run(f"curl -L -o '{dest}' '{url}'")
+        subprocess.run(["curl", "-L", "-o", dest, url], check=True, capture_output=True, text=True)
         log("Runner downloaded", "info")
 
     log("Extracting runner...", "step")
-    run(f"tar xzf '{dest}' -C '{RUNNER_DIR}'")
+    subprocess.run(["tar", "xzf", dest, "-C", RUNNER_DIR], check=True, capture_output=True, text=True)
     log("Runner extracted", "info")
 
 def configure_runner(token):
@@ -153,17 +155,16 @@ def configure_runner(token):
         return False
 
     log("Configuring runner...", "step")
-    cmd = (
-        f"cd '{RUNNER_DIR}' && "
-        f"./config.sh "
-        f"--url '{GITHUB_REPO_URL}' "
-        f"--token '{token}' "
-        f"--name '{RUNNER_NAME}' "
-        f"--labels 'self-hosted,Linux,termux' "
-        f"--unattended "
-        f"--replace"
-    )
-    result = run(cmd, check=False)
+    cmd = [
+        "./config.sh",
+        "--url", GITHUB_REPO_URL,
+        "--token", token,
+        "--name", RUNNER_NAME,
+        "--labels", "self-hosted,Linux,termux",
+        "--unattended",
+        "--replace"
+    ]
+    result = subprocess.run(cmd, cwd=RUNNER_DIR, check=False, capture_output=True, text=True)
     if result.returncode == 0:
         log("Runner configured successfully!", "info")
         return True
@@ -173,7 +174,7 @@ def configure_runner(token):
 
 def is_runner_running():
     """בדיקה אם ה-Runner פעיל."""
-    result = run("pgrep -f 'Runner.Listener'", check=False, capture=True)
+    result = run("pgrep -f 'Runner.Listener'", check=False, capture=True, shell=True)
     return result.returncode == 0
 
 def start_runner():
@@ -185,8 +186,13 @@ def start_runner():
 
     log("Starting runner in background...", "step")
     log_file = os.path.expanduser("~/zeta_runner.log")
-    cmd = f"cd '{RUNNER_DIR}' && nohup ./run.sh >> '{log_file}' 2>&1 &"
-    run(cmd)
+    with open(log_file, "a") as f:
+        subprocess.Popen(
+            ["./run.sh"],
+            cwd=RUNNER_DIR,
+            stdout=f,
+            stderr=subprocess.STDOUT
+        )
     time.sleep(3)
 
     if is_runner_running():
@@ -198,8 +204,8 @@ def start_runner():
 
 def stop_runner():
     """עצירת ה-Runner."""
-    run("pkill -f 'Runner.Listener'", check=False)
-    run("pkill -f 'run.sh'", check=False)
+    run("pkill -f 'Runner.Listener'", check=False, shell=True)
+    run("pkill -f 'run.sh'", check=False, shell=True)
     time.sleep(2)
 
 def check_internet():
